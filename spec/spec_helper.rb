@@ -3,7 +3,7 @@
 require "simplecov"
 SimpleCov.start do
   root File.expand_path("..", __dir__)
-  add_filter "/spec/"
+  skip "/spec/"
   enable_coverage :branch
   minimum_coverage line: 95
 end

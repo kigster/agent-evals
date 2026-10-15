@@ -17,7 +17,7 @@ module Agent
         description "#{configuration.description} Request types: #{types.join("; ")}."
 
         columns = IO.console&.winsize&.last || 80
-        width [columns - 6, 120].min
+        width columns.clamp(60, 120)
         exit_code_without_arguments 0
 
         styles do

@@ -1,28 +1,182 @@
 # agent-evals
 
-A generic evaluation runner for LLM-backed code, for the engineer who has a folder of cases and wants to know which model, prompt or setting answers them best, without writing the runner, the lineup, the progress bars or the leaderboard again.
+[![Gem Version](https://badge.fury.io/rb/agent-evals.svg)](https://rubygems.org/gems/agent-evals)
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/kigster/agent-evals/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/kigster/agent-evals/tree/main)
 
-The gem has a one-way boundary. A consumer suite registers two objects:
+> [!IMPORTANT]
+> **Which model answers your cases best, and what does it cost?** `agent-evals` runs every model in your lineup over every case in your folder, in parallel, and prints a leaderboard with scores, tokens and dollars.
+>
+> You write two small classes: an **adapter** that asks the model, and a **scorer** that grades the answer.
+>
+> The gem does the rest:
+>
+> - case discovery,
+> - the model lineup,
+> - providers,
+> - threads,
+> - progress bars,
+> - the leaderboard,
+> - and sending results to Braintrust or Logfire if you so desire.
 
-- an **adapter**, which runs one case against a model and returns a `Reply`. It owns everything the model sees and everything done to its answer. It never scores.
-- a **scorer**, which turns a case and a reply into a `Score`. It is pure and deterministic. It never calls anything.
+## Why
 
-Everything else is the gem's: case discovery, the model lineup (`.agent-eval.config.yml`), providers (OpenRouter through RubyLLM; TypeSafe's catalog), parallel execution, trackers (a local JSON log always; Braintrust or Logfire beside it), the per-case breakdown, the leaderboard, warnings held back from the screen, and the `agent-evals` command line. Nothing in `lib/` knows what is being evaluated.
+Every LLM project grows its own eval script, and every one of them rebuilds the same runner, model list, thread pool and results table. This gem is that script, written once.
+
+- **Scores reflect production.** Your adapter calls your real prompt builder and your real parser. The gem never touches what the model sees.
+- **Compare settings, not just models.** `effort: [low, high]` and `temperature: [0.0, 0.7]` expand into one contender per combination.
+- **Know the cheap winner.** "Best value" is the cheapest experiment within two points of the top score.
+- **Failures are counted honestly.** A wrong answer scores 0. A network error is an error, not a 0. A model your suite cannot ask is left out by name, not scored.
+- **No lock-in.** A local JSON log is always written. Braintrust, Logfire or your own tracker sits beside it.
+
+## What you get
+
+The bundled toy suite, run against two fake models (no network):
+
+```text
+$ agent-evals compare --local
+┌─────────┬─────────────┬─────────┬────────────────┬─────────────┬───────────┬────────┬─────────┐
+│ dataset │ model       │ effort  │ field_accuracy │ exact_match │ restraint │ errors │    cost │
+├─────────┼─────────────┼─────────┼────────────────┼─────────────┼───────────┼────────┼─────────┤
+│ animals │ fake/echo   │ default │         100.0% │      100.0% │    100.0% │      0 │ $0.0040 │
+│ animals │ fake/echo   │ low     │         100.0% │      100.0% │    100.0% │      0 │ $0.0040 │
+│ animals │ fake/parrot │ default │         100.0% │      100.0% │    100.0% │      0 │ $0.0040 │
+│ colors  │ fake/echo   │ default │         100.0% │      100.0% │    100.0% │      0 │ $0.0040 │
+│ colors  │ fake/echo   │ low     │         100.0% │      100.0% │    100.0% │      0 │ $0.0040 │
+│ colors  │ fake/parrot │ default │         100.0% │      100.0% │    100.0% │      0 │ $0.0040 │
+└─────────┴─────────────┴─────────┴────────────────┴─────────────┴───────────┴────────┴─────────┘
+```
+
+Abridged: the real table also has `temp`, `time`, `tok_in` and `tok_out` columns. It's followed by a "best value" line per dataset, such as `best value [animals] (fake/echo effort=default): 100.0% at $0.0040`, then a glossary of every column and an overall leaderboard. There is one column per metric your scorer declares.
+
+## Run the examples
+
+The repository ships two example suites. Both use fake models, so they need no API keys and no network. They live under `spec/fixtures/` and are **not** part of the installed gem, so start from a clone:
+
+```bash
+git clone https://github.com/kigster/agent-evals.git
+cd agent-evals
+bundle install
+```
+
+### The short way: `just`
+
+From the repository root, with [`just`](https://github.com/casey/just) installed (`brew install just`)
+
+```bash
+# Example 1: cases, verify, then compare --local
+just toy
+
+# Example 2: the same, for the config-only suite
+just config-only
+
+# Both
+just examples
+
+# Any other command, run inside the suite's folder
+just toy compare -n
+just toy run -m fake/echo -d animals --local
+just config-only cases
+```
+
+The recipes `cd` into the suite's folder for you and, for the config-only suite, set `RUBYLIB` too. The rest of this section is what they do by hand.
+
+### Where to run from
+
+`agent-evals` finds its suite by searching **upward from the current directory** for `evals/eval_helper.rb` or `evals/.agent-eval.config.yml`. The repository root has neither, so running there fails:
+
+```text
+$ bundle exec exe/agent-evals cases
+error: no suite is configured: register an adapter and a scorer in evals/eval_helper.rb, ...
+```
+
+Either `cd` into a suite's folder (the parent of its `evals/`), or point at the helper with `--helper`.
+
+### 1. The toy suite (`eval_helper.rb` style)
+
+```bash
+cd spec/fixtures/toy_suite
+
+# List the 8 cases (2 datasets × 2 variants × 2 cases); calls nothing.
+bundle exec agent-evals cases
+
+# Offline checks of inputs, expected.json, the adapter and the scorer.
+bundle exec agent-evals verify
+
+# Show the experiment matrix the lineup expands into; calls nothing.
+bundle exec agent-evals compare -n
+
+# One model, one dataset, with the per-case breakdown.
+bundle exec agent-evals run -m fake/echo -d animals --local
+
+# Every model in the lineup, leaderboard only.
+bundle exec agent-evals compare --local
+```
+
+The same commands work from the repository root with `--helper`:
+
+```bash
+bundle exec exe/agent-evals compare --local --helper spec/fixtures/toy_suite/evals/eval_helper.rb
+```
+
+What to read in it:
+
+| File (under `spec/fixtures/toy_suite/`) | What it shows                                                |
+| --------------------------------------- | ------------------------------------------------------------ |
+| `evals/eval_helper.rb`                  | `Agent::Evals.configure`: suite, cases glob, adapter, scorer |
+| `lib/toy_suite/evals.rb`                | the adapter and scorer classes                               |
+| `evals/.agent-eval.config.yml`          | the lineup, including a `direct:` entry the suite refuses    |
+| `evals/datasets/`                       | the case layout on disk                                      |
+
+The warning `typesafe/jev-latest refused: needs typesafe; this suite produces prompt` is intentional: it shows a contender being left out rather than scored 0.
+
+### 2. The config-only suite (no `eval_helper.rb`)
+
+The same suite, with the adapter and scorer named in `.agent-eval.config.yml` instead of Ruby. Its `require: toy_suite/evals` must be loadable, which in a real project means a gem in your bundle. Here the code lives in the toy suite's `lib/`, so add it to the load path with `RUBYLIB`:
+
+```bash
+cd spec/fixtures/config_only_suite
+RUBYLIB=../toy_suite/lib bundle exec agent-evals cases
+RUBYLIB=../toy_suite/lib bundle exec agent-evals compare --local
+```
+
+Without `RUBYLIB` the run stops with `require: toy_suite/evals could not be loaded ... is its gem in the bundle?`.
+
+### Against real models
+
+Use the toy suite as a template:
+
+1. Copy its `evals/` folder into your project.
+1. Replace the adapter and scorer with your own (see [Writing a suite](#writing-a-suite)).
+1. List real models under `vendors:` in `.agent-eval.config.yml` and drop the `fake:` entries.
+1. Add `gem "ruby_llm"` to your Gemfile and set `OPENROUTER_API_KEY`, in your shell or the suite's `.env` (see [Environment](#environment)).
 
 ## Install
 
 ```ruby
 # Gemfile
 gem "agent-evals"
-gem "ruby_llm"    # only if a provider needs it (OpenRouter does)
-gem "braintrust"  # only for the braintrust tracker
-gem "opentelemetry-sdk"            # only for the logfire tracker
+
+# for OpenRouter, the default provider
+gem "ruby_llm"
+
+# only for the braintrust tracker
+gem "braintrust"
+
+# only for the logfire tracker
+gem "opentelemetry-sdk"
 gem "opentelemetry-exporter-otlp"
 ```
 
-Ruby 3.4 or later.
+Requires Ruby 3.4 or later. `ruby_llm`, `braintrust` and the OpenTelemetry gems are optional: they load only when a command needs them, and a missing one is named in the error.
 
-## A suite
+## Writing a suite
+
+The boundary runs one way:
+
+- The **adapter** runs one case against a model and returns a `Reply`. It owns everything the model sees and everything done to its answer. It never scores.
+- The **scorer** turns a case and a reply into a `Score`. It is pure and deterministic. It never calls anything.
+
+Nothing in `lib/` knows what is being evaluated.
 
 The executable looks for `evals/eval_helper.rb` upward from the current directory (or `--helper PATH`, or `AGENT_EVALS_HELPER`), loads it, and dispatches. The helper calls `Agent::Evals.configure`:
 
@@ -33,39 +187,66 @@ require "agent/evals"
 require "my_gem"
 
 class MyAdapter < Agent::Evals::Adapter
-  def prepare(dataset) = @schema = MyGem.schema_for(dataset)   # once per dataset, outside the threads
+  # Once per dataset, outside the threads.
+  def prepare(dataset) = @schema = MyGem.schema_for(dataset)
 
   def call(kase, model:)
     completion = model.complete(system: MyGem.system_prompt(@schema), user: kase.input, json: true)
-    output = MyGem.parse(completion.text)                     # the production parser, so scores reflect production
+    # The production parser, so scores reflect production.
+    output = MyGem.parse(completion.text)
     Agent::Evals::Reply.new(output: output, raw: completion.text, usage: completion.usage)
   rescue MyGem::NotJSON => e
-    Agent::Evals::Reply.new(error: e.message, raw: completion&.text)   # the model's failure: scored 0
+    # The model's failure: scored 0.
+    Agent::Evals::Reply.new(error: e.message, raw: completion&.text)
   end
 
-  def context(kase) = { schema: @schema }                     # what the scorer needs beyond the case
-  def verify(dataset) = MyGem.schema_problems(dataset)        # offline, for `agent-evals verify`
+  # What the scorer needs beyond the case.
+  def context(kase) = { schema: @schema }
+
+  # Offline, for `agent-evals verify`.
+  def verify(dataset) = MyGem.schema_problems(dataset)
 end
 
 class MyScorer < Agent::Evals::Scorer
   def metrics
-    [Agent::Evals::Metric.new(name: "field_accuracy", description: "Mean per-field score.", primary: true),
-     Agent::Evals::Metric.new(name: "exact_match", description: "1 when every field is right."),
-     Agent::Evals::Metric.new(name: "restraint", description: "Of the fields the text never answers, the share left null.")]
+    [
+      Agent::Evals::Metric.new(
+        name: "field_accuracy",
+        description: "Mean per-field score.",
+        primary: true
+      ),
+      Agent::Evals::Metric.new(
+        name: "exact_match",
+        description: "1 when every field is right."
+      ),
+      Agent::Evals::Metric.new(
+        name: "restraint",
+        description: "Of the fields the text never answers, the share left null."
+      )
+    ]
   end
 
   def call(kase, reply, context:)
     scores = MyGem.field_scores(context[:schema], kase.expected, reply.output)
+    mean = scores.values.sum / scores.size
+    misses = scores.reject { |_, v| v == 1.0 }.keys
+
     Agent::Evals::Score.new(
-      value:       scores.values.sum / scores.size,
-      metrics:     { "field_accuracy" => scores.values.sum / scores.size,
-                     "exact_match"    => scores.values.all?(1.0) ? 1.0 : 0.0,
-                     "restraint"      => nil },                      # nil: this case does not apply; it is skipped, not zeroed
-      diagnostics: scores.reject { |_, v| v == 1.0 }.to_h { |f, _| [f, { want: kase.expected[f], got: reply.output[f] }] }
+      value: mean,
+      metrics: {
+        "field_accuracy" => mean,
+        "exact_match" => scores.values.all?(1.0) ? 1.0 : 0.0,
+        # nil: this case does not apply; it is skipped, not zeroed.
+        "restraint" => nil
+      },
+      diagnostics: misses.to_h { |f| [f, { want: kase.expected[f], got: reply.output[f] }] }
     )
   end
 
-  def verify(kase, context:) = Agent::Evals::SchemaValidator.new(context[:schema]).problems(kase.expected)
+  def verify(kase, context:)
+    Agent::Evals::SchemaValidator.new(context[:schema]).problems(kase.expected)
+  end
+
   def summary(kase) = "#{kase.expected.count { |_, v| !v.nil? }}/#{kase.expected.size} answered"
 end
 
@@ -74,15 +255,16 @@ Agent::Evals.configure do |c|
   c.cases "datasets/*/cases/**/input.txt"
   c.adapter MyAdapter.new
   c.scorer MyScorer.new
-  c.before_run { MyGem.reset_configuration! }   # after the env files load, before any model is called
+  # After the env files load, before any model is called.
+  c.before_run { MyGem.reset_configuration! }
 end
 ```
 
-A complete, runnable suite lives in [`spec/fixtures/toy_suite/evals/`](spec/fixtures/toy_suite/evals/): two datasets, two variants, the gem's own `Testing::EchoAdapter` and a fake provider, so it runs without a network.
+A complete, runnable suite lives in [`spec/fixtures/toy_suite/evals/`](spec/fixtures/toy_suite/evals/): two datasets, two variants, the gem's own `Testing::EchoAdapter` and a fake provider. It runs without a network.
 
 ### A config-only suite
 
-A suite needs no `eval_helper.rb` when its Ruby lives in its own gem. Three optional keys in `.agent-eval.config.yml` name it:
+When the adapter and scorer live in your own gem, you need no `eval_helper.rb`. Three optional keys in `.agent-eval.config.yml` name them:
 
 ```yaml
 # evals/.agent-eval.config.yml
@@ -91,7 +273,7 @@ adapter: MyGem::Evals::Adapter     # constant names, instantiated with no argume
 scorer: MyGem::Evals::Scorer
 ```
 
-The executable then finds `evals/.agent-eval.config.yml` upward from the working directory, roots the suite at `evals/`, requires what `require:` names and instantiates the two constants. `evals/` holds only the file and `datasets/`:
+The executable finds `evals/.agent-eval.config.yml` upward from the working directory, roots the suite at `evals/`, requires what `require:` names and instantiates the two constants. `evals/` holds only the config file and `datasets/`:
 
 ```text
 lib/my_gem/evals/adapter.rb         # the Ruby, in the gem
@@ -100,7 +282,9 @@ evals/.agent-eval.config.yml        # the lineup, plus require/adapter/scorer
 evals/datasets/...
 ```
 
-When `evals/eval_helper.rb` exists it is loaded first and may register either object in code; the config keys fill whatever the helper left unset. Neither supplying an adapter and a scorer is a configuration error naming the file and the keys; a `require:` that fails or a constant that does not exist is an error naming the key and the value, not a bare `LoadError` or `NameError`. The required file may itself call `Agent::Evals.configure`, for instance to register a provider. [`spec/fixtures/config_only_suite/`](spec/fixtures/config_only_suite/) is the toy suite in this form.
+If `evals/eval_helper.rb` also exists, it loads first and may register either object in code; the config keys fill whatever it left unset. The required file may itself call `Agent::Evals.configure`, for instance to register a provider.
+
+Errors name what is wrong: no adapter or scorer from either source names the file and the keys; a failing `require:` or an unknown constant names the key and its value instead of a bare `LoadError` or `NameError`. [`spec/fixtures/config_only_suite/`](spec/fixtures/config_only_suite/) is the toy suite in this form.
 
 ### Cases on disk
 
@@ -113,11 +297,15 @@ evals/
   datasets/<dataset>/cases/<variant>/[NNN/]metadata.json   # optional; merged into Case#metadata
 ```
 
-The folder after `datasets/` is the dataset; the folder holding `input.txt` is the variant, unless it is a number, in which case it is the case number and its parent is the variant. A case's id is `variant/NNN`; `-c clear` keeps a variant, `-c clear/003` one case. Another layout is a matter of the glob passed to `c.cases`.
+- The folder after `datasets/` is the **dataset**.
+- The folder holding `input.txt` is the **variant**, unless it is a number: then it is the case number and its parent is the variant.
+- A case id is `variant/NNN`. `-c clear` selects a variant, `-c clear/003` one case.
+
+Need another layout? Change the glob passed to `c.cases`.
 
 ### The lineup: `.agent-eval.config.yml`
 
-The file at the suite root names the models to compare, their settings, and the kinds of request the suite can produce:
+The file at the suite root names the models to compare, their settings, and the kinds of request the suite sends:
 
 ```yaml
 # evals/.agent-eval.config.yml
@@ -156,20 +344,26 @@ direct:                      # a vendor's own API, one request type each
     - model: jev-latest
 ```
 
-Each entry under a vendor becomes `<vendor>/<model>`, the OpenRouter id. `effort` and `temperature` take one value or a list; a list expands into one contender per value, so `effort: [low, high]` with `temperature: [0.0, 0.7]` runs four experiments for that model. Anything left out falls back to `defaults`. Flags (`-e`, `-t`, `--max-tokens`, `-p`) beat both.
+**`vendors:`** Each entry becomes `<vendor>/<model>`, the OpenRouter id. `effort` and `temperature` take one value or a list, and lists multiply: `effort: [low, high]` with `temperature: [0.0, 0.7]` runs four experiments for that model. Anything left out falls back to `defaults`. Flags (`-e`, `-t`, `--max-tokens`, `-p`) beat both.
 
-Each key under `direct:` names a provider the gem knows (today only `typesafe`); its entries take the same `{model:, effort:, temperature:, max_tokens:}` format and expand the same way, and render as `typesafe/jev-latest`. The contender carries its provider, so a direct `typesafe/jev-latest` and the OpenRouter chat model `typesafe/jev-router` can never be confused, whatever the ids look like. An unknown key under `direct:` is a configuration error naming the file and the known providers.
+**`direct:`** Each key names a provider the gem knows (today only `typesafe`). Entries take the same `{model:, effort:, temperature:, max_tokens:}` format, expand the same way, and render as `typesafe/jev-latest`. The contender carries its provider, so a direct `typesafe/jev-latest` and the OpenRouter chat model `typesafe/jev-router` never get confused. An unknown key is a configuration error naming the file and the known providers.
 
 #### Request types
 
-`request_types` is required. It says what the suite's adapter sends. The types, and what they mean, belong to the providers and show in `agent-evals --help`; a suite only names them:
+`request_types` is required. It says what the suite's adapter sends. The types belong to the providers and show in `agent-evals --help`; a suite only names them:
 
 | Type       | Provider                                 | Meaning                                              |
 | ---------- | ---------------------------------------- | ---------------------------------------------------- |
 | `prompt`   | OpenRouter (everything under `vendors:`) | a chat completion: system and user text in, text out |
 | `typesafe` | `direct: typesafe:`                      | typed questions: noul, choice, score                 |
 
-A contender is **admitted** only when its provider's type is in the suite's list. A refused contender is named in the run's warnings (`typesafe/jev-latest refused: needs typesafe; this suite produces prompt`), left out of the matrix and the leaderboard, and never scored 0: a model the suite cannot ask did not answer wrongly. `cases` prints the refusals too, so the mismatch shows before anything runs. A missing, empty or unknown `request_types` is a configuration error naming the file. A `[prompt]` suite that lists `direct: typesafe:` entries runs its `vendors:` and refuses those by name.
+A contender runs only when its provider's type is in the suite's list. Otherwise it is **refused**:
+
+- named in the run's warnings: `typesafe/jev-latest refused: needs typesafe; this suite produces prompt`
+- left out of the matrix and the leaderboard
+- never scored 0: a model the suite cannot ask did not answer wrongly
+
+`cases` prints refusals too, so a mismatch shows before anything runs. A missing, empty or unknown `request_types` is a configuration error naming the file.
 
 ## The command line
 
@@ -184,102 +378,164 @@ agent-evals compare -n                         # show that matrix, call nothing
 agent-evals completion zsh                     # shell completion (bash too)
 ```
 
-| Command      | Does                                                                                                     | Calls models |
-| ------------ | -------------------------------------------------------------------------------------------------------- | ------------ |
-| `cases`      | One row per case: dataset, id, difficulty, the scorer's `summary`, word count; refused lineup entries.   | no           |
-| `verify`     | Empty inputs, missing or unparsable `expected.json`, then `adapter.verify(dataset)` and `scorer.verify`. | no           |
-| `run`        | One experiment per model and dataset, each with its breakdown, then the leaderboard.                     | yes          |
-| `compare`    | The same experiments, only the leaderboard. `--concurrency N` limits models running at once.             | yes          |
-| `version`    | The gem version (`-V`, `--version`).                                                                     | no           |
-| `completion` | A bash or zsh completion script.                                                                         | no           |
+| Command      | Does                                                 | Calls models |
+| ------------ | ---------------------------------------------------- | ------------ |
+| `cases`      | Lists cases and refused lineup entries               | no           |
+| `verify`     | Checks inputs, `expected.json`, adapter and scorer   | no           |
+| `run`        | Runs experiments; per-case breakdown and leaderboard | yes          |
+| `compare`    | Runs experiments; leaderboard only                   | yes          |
+| `version`    | Prints the gem version (`-V`)                        | no           |
+| `completion` | Prints a bash or zsh completion script               | no           |
 
-Flags shared by `run` and `compare`: `-m/--models`, `-d/--dataset` (every dataset when omitted), `-c/--case`, `-e/--effort`, `-t/--temperature`, `--max-tokens`, `-p/--parallelism`, `--config FILE`, `--project NAME`, `--tracker NAME`, `--local`, `--no-open`, `-n/--dry-run`, `-o/--output [FILE]`.
+- `cases` prints one row per case: dataset, id, difficulty, the scorer's `summary`, word count.
+- `verify` reports empty inputs and missing or unparsable `expected.json`, then runs `adapter.verify(dataset)` and `scorer.verify`.
+- `run` and `compare` run one experiment per model and dataset. `compare --concurrency N` limits how many models run at once.
 
-Reserved short flags, the same in every CLI of this family: `-n` dry run, `-y` yes, `-o` report file, `-l` log file, `-L` log level. `-n` and `-o` are implemented; `-l` and `-L` are reserved and not taken by anything else.
+Flags shared by `run` and `compare`: `-m/--models`, `-d/--dataset` (every dataset when omitted), `-c/--case`, `-e/--effort`, `-t/--temperature`, `--max-tokens`, `-p/--parallelism`, `--config FILE`, `--project NAME`, `--tracker NAME`, `--local`, `--no-open`, `-n/--dry-run`, `-o/--output [FILE]`. `-l` and `-L` are reserved for logging and not yet implemented.
 
-The leaderboard has one column per metric the scorer declares, ranked by the `primary` one, with a glossary built from each metric's `description`. The best value per dataset is the cheapest experiment within two points of the best primary metric. STDOUT carries the tables; progress bars and warnings go to STDERR, and anything a library would have printed while the bars redraw is saved to `log/<command>.warnings.<stamp>.log` instead.
+**Reading the output.** The leaderboard has one column per metric the scorer declares, ranked by the `primary` one, with a glossary built from each metric's `description`. STDOUT carries the tables. Progress bars and warnings go to STDERR, and anything a library prints while the bars redraw is saved to `log/<command>.warnings.<stamp>.log` instead of garbling the screen.
 
 ## Trackers
 
-The gem always owns the run loop. Where results go besides the terminal is a **tracker**: the local JSON log always runs, and at most **one remote tracker** runs beside it, or none.
+The gem always owns the run loop. A **tracker** decides where results go besides the terminal. The local JSON log always runs; at most **one remote tracker** runs beside it.
 
-| Tracker      | Chosen by                                       | Needs                                                                                         | Sends                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| ------------ | ----------------------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| local        | always                                          | nothing                                                                                       | `log/agent-evals/<experiment>.<stamp>.json`: settings, means, errors, usage, and one row per case (score, metrics, outcomes, diagnostics, error, usage).                                                                                                                                                                                                                                                                                                                                                   |
-| `braintrust` | `--tracker braintrust`, or `BRAINTRUST_API_KEY` | the `braintrust` gem; `BRAINTRUST_API_KEY`; optionally `BRAINTRUST_PROJECT_ID` or `--project` | One experiment per run in the project; one eval row per case with input, expected, output (or `_error`), the scorer's metrics as scores, and diagnostics, outcomes and usage as metadata. `finish` returns the experiment page, which opens unless `--no-open`.                                                                                                                                                                                                                                            |
-| `logfire`    | `--tracker logfire`, or `LOGFIRE_TOKEN`         | `opentelemetry-sdk` and `opentelemetry-exporter-otlp`; `LOGFIRE_TOKEN`                        | OTLP traces to `https://logfire-us.pydantic.dev/v1/traces` (per their docs, 2026-10-15; `LOGFIRE_BASE_URL` for another region): one span per experiment (suite, project, model, provider, settings, case count, means on finish) with one child span per case (id, dataset, variant, score, each metric, outcome counts, duration, tokens and cost, diagnostics as JSON cut at 4 KB, exceptions recorded). The raw reply is not sent unless `logfire: { include_replies: true }` is in the config. No URL. |
+| Tracker      | Gems                                               | Key                  |
+| ------------ | -------------------------------------------------- | -------------------- |
+| local        | none                                               | none                 |
+| `braintrust` | `braintrust`                                       | `BRAINTRUST_API_KEY` |
+| `logfire`    | `opentelemetry-sdk`, `opentelemetry-exporter-otlp` | `LOGFIRE_TOKEN`      |
 
-Selection, in this order: `--tracker NAME` on the command line, then `tracker:` in `.agent-eval.config.yml`, then the environment, where exactly one tracker's key being set selects it. Two keys set and nothing chosen is an error asking for `--tracker` or `tracker:`; `--local` (or `--tracker none`) means no remote tracker. A chosen tracker whose gem or key is missing fails before any model is called, naming both. `-v` prints which tracker was chosen and why.
+Choose one with `--tracker NAME`, or let its key select it (see selection order below). Braintrust also takes `BRAINTRUST_PROJECT_ID` or `--project`.
 
-Logfire has no Ruby gem of its own: it is an OTLP backend for the standard OpenTelemetry Ruby SDK, so the tracker builds its own tracer provider and exporter and leaves the global one alone. When `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_HEADERS` is already set, those win over `LOGFIRE_TOKEN`, and `-v` says so. Traces only; Logfire's metrics and logs SDKs are pre-1.0.
+What each one sends:
+
+- **local** writes `log/agent-evals/<experiment>.<stamp>.json`: settings, means, errors, usage, and one row per case (score, metrics, outcomes, diagnostics, error, usage).
+- **braintrust** creates one experiment per run in the project, with one eval row per case: input, expected, output (or `_error`), the scorer's metrics as scores, and diagnostics, outcomes and usage as metadata. The experiment page opens when the run finishes, unless `--no-open`.
+- **logfire** sends OTLP traces to `https://logfire-us.pydantic.dev/v1/traces` (`LOGFIRE_BASE_URL` for another region): one span per experiment (suite, project, model, provider, settings, case count, means) with one child span per case (id, dataset, variant, score, each metric, outcome counts, duration, tokens and cost, diagnostics as JSON cut at 4 KB, exceptions recorded). Raw replies are not sent unless the config has `logfire: { include_replies: true }`. There is no page to open.
+
+**Selection order:** `--tracker NAME`, then `tracker:` in `.agent-eval.config.yml`, then the environment, where exactly one tracker's key being set selects it.
+
+- Two keys set and nothing chosen is an error asking for `--tracker` or `tracker:`.
+- `--local` (or `--tracker none`) means no remote tracker.
+- A chosen tracker whose gem or key is missing fails before any model is called, naming both.
+- `-v` prints which tracker was chosen and why.
+
+Logfire has no Ruby gem of its own. It is an OTLP backend for the standard OpenTelemetry Ruby SDK, so the tracker builds its own tracer provider and exporter and leaves the global one alone. When `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_HEADERS` is already set, those win over `LOGFIRE_TOKEN`, and `-v` says so. Traces only: Logfire's metrics and logs SDKs are pre-1.0.
 
 ### Writing a tracker
 
-A tracker is a class with three callbacks. Register it with `c.tracker` in the helper (or name it in a plugin gem's `require:`), and choose it by name:
+A tracker is a class with three callbacks. Register it with `c.tracker` in the helper (or in a plugin gem loaded through `require:`), then choose it by name:
 
 ```ruby
 class Weave < Agent::Evals::Tracker
-  def self.env_key = "WANDB_API_KEY"                 # selects it when set and nothing else is chosen
-  def self.gems = ["wandb"]                          # lazily required; named in the error when missing
+  # Selects it when set and nothing else is chosen.
+  def self.env_key = "WANDB_API_KEY"
 
-  def start(experiment)                              # once, before the first case
-    @run = Wandb.init(project: context[:project], name: experiment.name,
-      config: { model: experiment.model.id, **experiment.model.settings })
+  # Lazily required; named in the error when missing.
+  def self.gems = ["wandb"]
+
+  # Once, before the first case.
+  def start(experiment)
+    @run = Wandb.init(
+      project: context[:project],
+      name: experiment.name,
+      config: { model: experiment.model.id, **experiment.model.settings }
+    )
   end
 
-  def record(result)                                 # once per finished case, in order, under a lock
-    @run.log("case" => result.case.key, "score" => result.score&.value, **(result.score&.metrics || {}),
-      "error" => result.error, "cost_usd" => result.reply&.usage&.cost_usd)
+  # Once per finished case, in order, under a lock.
+  def record(result)
+    @run.log(
+      "case" => result.case.key,
+      "score" => result.score&.value,
+      **(result.score&.metrics || {}),
+      "error" => result.error,
+      "cost_usd" => result.reply&.usage&.cost_usd
+    )
   end
 
-  def finish(experiment, summary)                    # once, with the summary
+  # Once, with the summary.
+  def finish(experiment, summary)
     @run.summary.update(summary.means)
     @run.finish
-    { url: @run.url }                                # or { url: nil } when there is no page to open
+    # Or { url: nil } when there is no page to open.
+    { url: @run.url }
   end
 end
 
 Agent::Evals.configure { |c| c.tracker Weave }
 ```
 
-`context` holds `suite:`, `project:`, `project_id:` and `options:` (the tracker's own section of the config file, e.g. `weave: { entity: "team" }`). Return `false` from `enabled?` to turn every callback into a no-op. A tracker for another OTLP backend is a subclass of `Trackers::Logfire` with different credentials.
+`context` holds `suite:`, `project:`, `project_id:` and `options:` (the tracker's own section of the config file, e.g. `weave: { entity: "team" }`). Return `false` from `enabled?` to turn every callback into a no-op. To target another OTLP backend, subclass `Trackers::Logfire` with different credentials.
 
 ## Environment
 
-| Variable                                                    | Needed when                                                                                                           |
-| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `OPENROUTER_API_KEY`                                        | any contender is served by OpenRouter (the default provider)                                                          |
-| `TYPESAFE_API_KEY`                                          | a `direct: typesafe:` contender runs                                                                                  |
-| `BRAINTRUST_API_KEY`                                        | optional; selects the braintrust tracker when nothing else is chosen, and is required by it                           |
-| `BRAINTRUST_PROJECT_ID`                                     | optional; the Braintrust project UUID, beating the lineup's `project`                                                 |
-| `LOGFIRE_TOKEN`                                             | optional; selects the logfire tracker when nothing else is chosen, and is required by it (a write token)              |
-| `LOGFIRE_BASE_URL`                                          | optional; Logfire's region, default `https://logfire-us.pydantic.dev`                                                 |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` | optional; when set, the logfire tracker uses them instead of `LOGFIRE_TOKEN`                                          |
-| `AGENT_EVALS_HELPER`                                        | optional; the helper to load instead of searching upward for `evals/eval_helper.rb` or `evals/.agent-eval.config.yml` |
+| Variable                      | Used for                                                  |
+| ----------------------------- | --------------------------------------------------------- |
+| `OPENROUTER_API_KEY`          | required for any `vendors:` model (OpenRouter)            |
+| `TYPESAFE_API_KEY`            | required for a `direct: typesafe:` model                  |
+| `BRAINTRUST_API_KEY`          | the braintrust tracker; selects it when nothing else does |
+| `BRAINTRUST_PROJECT_ID`       | Braintrust project UUID; beats the lineup's `project`     |
+| `LOGFIRE_TOKEN`               | the logfire tracker (a write token); selects it likewise  |
+| `LOGFIRE_BASE_URL`            | Logfire region; default `https://logfire-us.pydantic.dev` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | when set, logfire uses it instead of `LOGFIRE_TOKEN`      |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | likewise                                                  |
+| `AGENT_EVALS_HELPER`          | a helper to load instead of searching upward              |
 
 The suite's `env_files` load first, without overriding what is already exported. A missing key fails the run before any model is called, naming the variable.
 
 ## Writing a provider
 
-A provider is one API: the request type it answers, the keys it needs, the models it lists, and `complete`. A provider that serves `vendors:` ids also says which (`prefix`); a `direct?` provider is reached only through a `direct:` key with its `name`. Register it with `c.provider`; the last registered is asked first for a `vendors:` id, and OpenRouter, which claims every id, is always last.
+A provider wraps one API: the request type it answers, the keys it needs, the models it lists, and `complete`.
+
+- A provider that serves `vendors:` ids declares which ones with `prefix`.
+- A `direct?` provider is reached only through a `direct:` key matching its `name`.
+- Register it with `c.provider`. The last registered is asked first for a `vendors:` id; OpenRouter, which claims every id, is always asked last.
 
 ```ruby
 class Ollama < Agent::Evals::Providers::Base
+  HOST = "http://localhost:11434"
+
   def name = "ollama"
-  def request_type = :prompt                          # admitted by a suite declaring prompt
-  def request_type_description = "a chat completion"  # shown in --help; a suite never spells it
-  def prefix = "ollama/"                              # serves "ollama/<model>"
-  def env_keys = []                                   # local, no key
-  def efforts = []                                    # takes no reasoning effort
-  def catalog = JSON.parse(Net::HTTP.get(URI("http://localhost:11434/api/tags"))).fetch("models").map { "ollama/#{it["name"]}" }
+
+  # Admitted by a suite declaring prompt.
+  def request_type = :prompt
+
+  # Shown in --help; a suite never spells it.
+  def request_type_description = "a chat completion"
+
+  # Serves "ollama/<model>".
+  def prefix = "ollama/"
+
+  # Local, no key.
+  def env_keys = []
+
+  # Takes no reasoning effort.
+  def efforts = []
+
+  def catalog
+    tags = JSON.parse(Net::HTTP.get(URI("#{HOST}/api/tags")))
+    tags.fetch("models").map { "ollama/#{it["name"]}" }
+  end
 
   def complete(model, system:, user:, json: true)
-    body = { model: model.name, system: system, prompt: user, format: (json ? "json" : nil), stream: false }.compact
-    response = JSON.parse(Net::HTTP.post(URI("http://localhost:11434/api/generate"), JSON.generate(body)).body)
+    body = {
+      model: model.name,
+      system: system,
+      prompt: user,
+      format: (json ? "json" : nil),
+      stream: false
+    }.compact
+    response = JSON.parse(Net::HTTP.post(URI("#{HOST}/api/generate"), JSON.generate(body)).body)
+
     Agent::Evals::Completion.new(
-      text:  response.fetch("response"),
-      usage: { input_tokens: response["prompt_eval_count"], output_tokens: response["eval_count"], cost_usd: 0.0 },
-      raw:   response
+      text: response.fetch("response"),
+      usage: {
+        input_tokens: response["prompt_eval_count"],
+        output_tokens: response["eval_count"],
+        cost_usd: 0.0
+      },
+      raw: response
     )
   end
 end
@@ -289,7 +545,7 @@ Agent::Evals.configure { |c| c.provider Ollama.new }
 
 `model.effort`, `model.temperature` and `model.max_tokens` carry the contender's settings; nil means "send nothing". A transport failure should raise: the run counts it as an error, not as a wrong answer.
 
-`Providers::TypeSafe` is a direct provider (`direct: typesafe:`, request type `typesafe`): it ships with the model list, the key and the pricing of TypeSafe's API, enough for `verify` and the cost column. Its `complete` raises "no typesafe consumer yet": the typed request shape will be defined by the first suite that declares `request_types: [typesafe]`.
+`Providers::TypeSafe` is a direct provider (`direct: typesafe:`, request type `typesafe`). It ships with TypeSafe's model list, key and pricing, which is enough for `verify` and the cost column. Its `complete` is not implemented yet and raises "no typesafe consumer yet": the typed request shape will be defined by the first suite that declares `request_types: [typesafe]`.
 
 ## Public API
 
@@ -298,36 +554,81 @@ module Agent::Evals
   Case       = Data.define(:id, :dataset, :variant, :input, :expected, :path, :metadata)
   Usage      = Data.define(:input_tokens, :output_tokens, :cost_usd)
   Completion = Data.define(:text, :usage, :raw)
-  Reply      = Data.define(:output, :raw, :usage, :error, :metadata)   # error = the model failed, scored 0; raise = transport
-  Metric     = Data.define(:name, :description, :aggregate, :primary)  # aggregate :mean, skipping nil
-  Score      = Data.define(:value, :metrics, :outcomes, :diagnostics)  # value 0..1; metrics { name => Float | nil }
+  # error: the model failed, scored 0. A raise: transport failure.
+  Reply      = Data.define(:output, :raw, :usage, :error, :metadata)
+  # aggregate: :mean, skipping nil.
+  Metric     = Data.define(:name, :description, :aggregate, :primary)
+  # value: 0..1; metrics: { name => Float | nil }.
+  Score      = Data.define(:value, :metrics, :outcomes, :diagnostics)
   RunResult  = Data.define(:experiment, :case, :reply, :score, :duration, :error)
-  Contender  = Data.define(:model, :effort, :temperature, :max_tokens, :provider)  # provider nil for vendors:, a name for direct:
+  # provider: nil for vendors:, a name for direct:.
+  Contender  = Data.define(:model, :effort, :temperature, :max_tokens, :provider)
 
-  class Model;   attr_reader :id, :provider, :settings; def complete(system: nil, user:, json: true) = Completion; end
-  class Adapter; def prepare(dataset); def call(kase, model:); def context(kase); def verify(dataset); def metadata; end
-  class Scorer;  def metrics; def call(kase, reply, context:); def verify(kase, context:); def summary(kase); end
-  class SchemaValidator  # { name => { type:, enum:, nullable: } }; boolean integer number string enum multi_enum
-  class Experiment       # one model over one dataset, on the gem's own thread pool; trackers watch
-  class Tracker          # start(experiment), record(run_result), finish(experiment, summary) -> { url: }
-  module Trackers        # Local (always), Braintrust, Logfire (OTLP), Registry (choose)
+  class Model
+    attr_reader :id, :provider, :settings
+    def complete(system: nil, user:, json: true) = Completion
+  end
+
+  class Adapter
+    def prepare(dataset)
+    def call(kase, model:)
+    def context(kase)
+    def verify(dataset)
+    def metadata
+  end
+
+  class Scorer
+    def metrics
+    def call(kase, reply, context:)
+    def verify(kase, context:)
+    def summary(kase)
+  end
+
+  # Schema: { name => { type:, enum:, nullable: } }.
+  # Types: boolean, integer, number, string, enum, multi_enum.
+  class SchemaValidator
+
+  # One model over one dataset, on the gem's own thread pool; trackers watch.
+  class Experiment
+
+  # start(experiment), record(run_result), finish(experiment, summary) -> { url: }
+  class Tracker
+
+  # Local (always), Braintrust, Logfire (OTLP), Registry (choose).
+  module Trackers
+
+  # Base (request_type, direct?), Registry (for, direct, admit), OpenRouter, TypeSafe, Catalog.
+  module Providers
+
+  # EchoAdapter, FakeProvider, FakeModel.
+  module Testing
+
+  # Config#request_types is required; Config::REQUEST_TYPES = %w[prompt typesafe].
   class Discovery, Config, Configuration, Runtime, Verify, Warnings, Launcher
-  Config#request_types   # required in .agent-eval.config.yml; Config::REQUEST_TYPES = %w[prompt typesafe]
-  module Providers       # Base (request_type, direct?), Registry (for, direct, admit), OpenRouter, TypeSafe, Catalog
-  module Testing         # EchoAdapter, FakeProvider, FakeModel
 end
 ```
 
 ## Development
 
 ```bash
-just install     # bundle
-just ci          # rubocop, rspec (coverage >= 95%), the toy suite through the executable; no network
-just toy         # agent-evals cases && agent-evals verify, in spec/fixtures/toy_suite
-lefthook install # the pre-commit hooks
+# Install the bundle
+just install
+
+# RuboCop, RSpec (coverage >= 95%), both example suites; no network
+just ci
+
+# Both example suites through the executable: cases, verify, compare --local
+just examples
+
+# Build the .gem into pkg/; publish pushes it (RubyGems OTP from 1Password)
+just build
+just publish
+
+# Install the pre-commit hooks
+lefthook install
 ```
 
-Specs build real directories under `Dir.mktmpdir` and never reach the network; `RubyLLM`, the Braintrust API classes and `Net::HTTP` are stubbed, and the trackers are asserted through OpenTelemetry's in-memory span exporter.
+Specs build real directories under `Dir.mktmpdir` and never reach the network. `RubyLLM`, the Braintrust API classes and `Net::HTTP` are stubbed, and the trackers are asserted through OpenTelemetry's in-memory span exporter.
 
 ## License
 
