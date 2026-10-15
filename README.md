@@ -1,10 +1,13 @@
-# agent-evals
+# Agent Evals (`agent-evals`)
 
-[![Gem Version](https://badge.fury.io/rb/agent-evals.svg)](https://rubygems.org/gems/agent-evals)
-[![CircleCI](https://dl.circleci.com/status-badge/img/gh/kigster/agent-evals/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/kigster/agent-evals/tree/main)
+[![Gem Version](https://badge.fury.io/rb/agent-evals.svg)](https://rubygems.org/gems/agent-evals) [![CircleCI](https://dl.circleci.com/status-badge/img/gh/kigster/agent-evals/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/kigster/agent-evals/tree/main)
+
+______________________________________________________________________
 
 > [!IMPORTANT]
-> **Which model answers your cases best, and what does it cost?** `agent-evals` runs every model in your lineup over every case in your folder, in parallel, and prints a leaderboard with scores, tokens and dollars.
+> **Which model answers your cases best, and what does it cost?**
+>
+> `agent-evals` runs every model in your lineup over every case in your folder, in parallel, and prints a leaderboard with scores, tokens and dollars.
 >
 > You write two small classes: an **adapter** that asks the model, and a **scorer** that grades the answer.
 >
@@ -91,7 +94,27 @@ error: no suite is configured: register an adapter and a scorer in evals/eval_he
 
 Either `cd` into a suite's folder (the parent of its `evals/`), or point at the helper with `--helper`.
 
+## Examples
+
+The gem comes with two somewhat contrived examples, which live in `spec/fixtures` folder.
+
+You can run both of them from the gem source's root folder by using `just`:
+
+```bash
+just examples
+```
+
+You should see the header for "Toy Suite" and then for "Config Only Suite".
+
+You can run individual examples with `just toy` and `just config-only`.
+
+But let's dive a bit deeper.
+
 ### 1. The toy suite (`eval_helper.rb` style)
+
+If you use `just` then the easiest way to run the "toy" suite is with `just toy`.
+
+But it helps to understand what's happening under the hood.
 
 ```bash
 cd spec/fixtures/toy_suite
