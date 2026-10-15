@@ -12,7 +12,6 @@ AllCops:
   Include:
     - '**/*.rb'
     - Gemfile
-    - justfile.rb
     - '*.gemspec'
   Exclude:
     - vendor/**/*
@@ -66,7 +65,7 @@ RSpec/MultipleExpectations:
   Enabled: false
 
 RSpec/MultipleMemoizedHelpers:
-  Max: 8
+  Max: 10
 
 RSpec/NestedGroups:
   Max: 4

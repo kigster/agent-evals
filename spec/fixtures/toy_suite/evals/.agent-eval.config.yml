@@ -1,0 +1,18 @@
+# The toy suite's lineup: fake models under vendors, so nothing here can call
+# a network, plus one direct TypeSafe entry the suite refuses, since it
+# produces prompts only.
+project: toy-suite
+request_types: [prompt]
+defaults:
+  effort: default
+  temperature: 0.2
+  max_tokens: 256
+  parallelism: 2
+vendors:
+  fake:
+    - model: echo
+      effort: [default, low]
+    - model: parrot
+direct:
+  typesafe:
+    - model: jev-latest
