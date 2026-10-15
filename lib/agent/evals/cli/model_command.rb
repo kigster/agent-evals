@@ -122,7 +122,7 @@ module Agent
         # @return [Array<Contender>] the admitted contenders
         # @raise [Error] when none is admitted, naming every refusal
         def admit(found, config)
-          found.each { providers.for(it.model) } # an unserved id fails here, before anything is spent
+          found.each { providers.for(it) } # an unserved id fails here, before anything is spent
           admitted, refusals = providers.admit(found, request_types: config.request_types)
           refusals.each { warnings.record(it.to_s) }
           raise Error, "no admitted models: #{refusals.join("; ")}" if admitted.empty?
@@ -289,7 +289,7 @@ module Agent
         # Tokens, cost and the mean primary metric per contender, over every
         # dataset it ran.
         def totals(summaries)
-          groups = summaries.group_by { [it.model.id, it.model.effort, it.model.temperature] }.values.map do |group|
+          groups = summaries.group_by { [it.model.key, it.model.effort, it.model.temperature] }.values.map do |group|
             values = group.filter_map { it.mean(primary) }
             { first: group.first, errors: group.sum { it.errors.size },
               value: values.size == group.size ? values.sum / values.size : nil,

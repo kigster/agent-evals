@@ -15,6 +15,7 @@ module Agent
 
         def name = "openrouter"
         def request_type = :prompt
+        def request_type_description = "a chat completion: system and user text in, text out"
         def env_keys = [KEY]
         def efforts = EFFORTS
 

@@ -3,14 +3,16 @@
 module Agent
   module Evals
     module Providers
-      # TypeSafe's own API, which serves Jev as typed questions rather than
-      # chat: request type `typesafe`, model ids "typesafe-api/<name>". (Jev
-      # on OpenRouter, "typesafe/jev-router", is a chat model and goes
-      # through {OpenRouter}.) The gem knows this API's model list, key and
-      # pricing, enough for `verify` and the cost column; the request shape
-      # waits for the first suite that declares `request_types: [typesafe]`.
+      # TypeSafe's own API, which serves Jev as typed questions (noul, choice,
+      # score) rather than chat: request type `typesafe`, reached only through
+      # a `direct: typesafe:` entry, whose ids read "typesafe/<name>". Jev on
+      # OpenRouter, `typesafe/jev-router` under `vendors:`, is a chat model
+      # and goes through {OpenRouter}; the contender carries which is meant.
+      # The gem knows this API's model list, key and pricing, enough for
+      # `verify` and the cost column; the request shape waits for the first
+      # suite that declares `request_types: [typesafe]`.
       class TypeSafe < Base
-        PREFIX = "typesafe-api/"
+        PREFIX = "typesafe/"
         URL = "https://api.typesafe.ai/v1/models"
         KEY = "TYPESAFE_API_KEY"
 
@@ -20,13 +22,15 @@ module Agent
 
         def name = "typesafe"
         def request_type = :typesafe
+        def request_type_description = "typed questions: noul, choice, score"
+        def direct? = true
         def prefix = PREFIX
         def env_keys = [KEY]
 
         # Jev takes no reasoning effort.
         def efforts = []
 
-        # @return [Array<String>] the models, as "typesafe-api/<name>"
+        # @return [Array<String>] the models, as "typesafe/<name>"
         def catalog
           Catalog.fetch(URL, "Authorization" => "Bearer #{ENV.fetch(KEY, nil)}").fetch("models").map { "#{PREFIX}#{it.fetch("name")}" }
         end

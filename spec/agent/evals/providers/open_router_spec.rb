@@ -19,6 +19,8 @@ RSpec.describe Agent::Evals::Providers::OpenRouter do
 
   its(:name) { is_expected.to eq("openrouter") }
   its(:request_type) { is_expected.to eq(:prompt) }
+  its(:request_type_description) { is_expected.to include("chat completion") }
+  it { is_expected.not_to be_direct }
   it("serves Jev on OpenRouter as a chat model") { expect(provider).to be_serves("typesafe/jev-router") }
   its(:env_keys) { is_expected.to eq(["OPENROUTER_API_KEY"]) }
   its(:prefix) { is_expected.to eq("") }

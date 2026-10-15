@@ -13,7 +13,8 @@ module Agent
       Dry::CLI::Help.configure do
         configuration = Agent::Evals.configuration
         title configuration.name == PROGRAM ? PROGRAM : "#{PROGRAM} (#{configuration.name})"
-        description configuration.description
+        types = configuration.providers.uniq(&:request_type).map { "#{it.request_type} (#{it.request_type_description})" }
+        description "#{configuration.description} Request types: #{types.join("; ")}."
 
         columns = IO.console&.winsize&.last || 80
         width [columns - 6, 120].min

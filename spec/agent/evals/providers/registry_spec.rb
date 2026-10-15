@@ -4,12 +4,20 @@ RSpec.describe Agent::Evals::Providers::Registry do
   subject(:registry) { described_class.default }
 
   let(:fake) { Agent::Evals::Testing::FakeProvider.new }
+  let(:direct_jev) { contender("typesafe/jev-latest", provider: :typesafe) }
 
-  def contender(model) = Agent::Evals::Contender.new(model: model, effort: "default", temperature: 0.1, max_tokens: 10)
+  def contender(model, provider: nil)
+    Agent::Evals::Contender.new(model: model, effort: "default", temperature: 0.1, max_tokens: 10, provider: provider)
+  end
 
   it { expect(registry.map(&:name)).to eq(%w[typesafe openrouter]) }
   it { expect(registry.for("anthropic/claude-haiku-5.5")).to be_a(Agent::Evals::Providers::OpenRouter) }
-  it { expect(registry.for("typesafe-api/jev-latest")).to be_a(Agent::Evals::Providers::TypeSafe) }
+  it("sends Jev on OpenRouter to OpenRouter") { expect(registry.for("typesafe/jev-router")).to be_a(Agent::Evals::Providers::OpenRouter) }
+  it("sends a direct entry to the provider it names") { expect(registry.for(direct_jev)).to be_a(Agent::Evals::Providers::TypeSafe) }
+  it("never lets a direct provider claim a vendors id") { expect(registry.for(contender("typesafe/jev-latest"))).to be_a(Agent::Evals::Providers::OpenRouter) }
+  its(:direct_names) { is_expected.to eq(["typesafe"]) }
+  it { expect(registry.direct(:typesafe)).to be_a(Agent::Evals::Providers::TypeSafe) }
+  it { expect { registry.direct(:ollama) }.to raise_error(Agent::Evals::Error, /no direct provider "ollama"; have typesafe/) }
   it { expect(registry.efforts).to eq(Agent::Evals::Providers::OpenRouter::EFFORTS) }
 
   it "asks the last registered provider first" do
@@ -19,12 +27,12 @@ RSpec.describe Agent::Evals::Providers::Registry do
   end
 
   it "names the providers when none serves an id" do
-    empty = described_class.new([Agent::Evals::Providers::TypeSafe.new])
-    expect { empty.for("acme/x") }.to raise_error(Agent::Evals::Error, %r{no provider serves "acme/x"; have typesafe})
+    only_fake = described_class.new([fake, Agent::Evals::Providers::TypeSafe.new])
+    expect { only_fake.for("acme/x") }.to raise_error(Agent::Evals::Error, %r{no provider serves "acme/x"; have fake\z})
   end
 
   it "lists the providers and keys a lineup uses" do
-    contenders = [contender("a/x"), contender("b/y"), contender("typesafe-api/jev")]
+    contenders = [contender("a/x"), contender("b/y"), direct_jev]
     expect(registry.used_by(contenders).map(&:name)).to eq(%w[openrouter typesafe])
     expect(registry.keys_for(contenders)).to eq(%w[OPENROUTER_API_KEY TYPESAFE_API_KEY])
   end
@@ -35,12 +43,12 @@ RSpec.describe Agent::Evals::Providers::Registry do
   end
 
   describe "#admit" do
-    let(:contenders) { [contender("acme/x"), contender("typesafe-api/jev-latest"), contender("typesafe/jev-router")] }
+    let(:contenders) { [contender("acme/x"), direct_jev, contender("typesafe/jev-router")] }
 
     it "admits the providers whose request type the suite declares, and refuses the rest by name" do
       admitted, refused = registry.admit(contenders, request_types: [:prompt])
       expect(admitted.map(&:model)).to eq(%w[acme/x typesafe/jev-router])
-      expect(refused.map(&:to_s)).to eq(["typesafe-api/jev-latest refused: needs typesafe; this suite produces prompt"])
+      expect(refused.map(&:to_s)).to eq(["typesafe/jev-latest refused: needs typesafe; this suite produces prompt"])
     end
 
     it "admits everything a suite declaring both can ask" do
@@ -50,7 +58,7 @@ RSpec.describe Agent::Evals::Providers::Registry do
 
     it "refuses everything when the suite declares only typesafe" do
       admitted, refused = registry.admit(contenders, request_types: [:typesafe])
-      expect(admitted.map(&:model)).to eq(["typesafe-api/jev-latest"])
+      expect(admitted).to eq([direct_jev])
       expect(refused.map { it.contender.model }).to eq(%w[acme/x typesafe/jev-router])
     end
   end
@@ -64,12 +72,12 @@ RSpec.describe Agent::Evals::Providers::Registry do
     end
 
     it "passes models their providers list" do
-      expect { registry.verify!([contender("a/x"), contender("typesafe-api/jev-latest")]) }.not_to raise_error
+      expect { registry.verify!([contender("a/x"), direct_jev]) }.not_to raise_error
     end
 
     it "names every model its provider does not list" do
-      expect { registry.verify!([contender("a/y"), contender("typesafe-api/jev-9")]) }
-        .to raise_error(Agent::Evals::Error, %r{unknown models a/y, typesafe-api/jev-9: not listed})
+      expect { registry.verify!([contender("a/y"), contender("typesafe/jev-9", provider: :typesafe)]) }
+        .to raise_error(Agent::Evals::Error, %r{unknown models a/y, typesafe/jev-9: not listed})
     end
 
     it "does not ask a provider no model uses" do

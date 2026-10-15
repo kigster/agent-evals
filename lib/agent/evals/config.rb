@@ -14,12 +14,16 @@ module Agent
     #     temperature: 0.2
     #     max_tokens: 4096
     #     parallelism: 4
-    #   vendors:
+    #   vendors:                     # the OpenRouter list; every entry takes a prompt
     #     anthropic:
     #       - model: claude-haiku-5.5
     #         effort: [default, low]  # a list expands into one contender per value
+    #   direct:                      # a vendor's own API, one request type each
+    #     typesafe:
+    #       - model: jev-latest
     #
-    # Each entry becomes "<vendor>/<model>", the id a provider recognises.
+    # Each entry becomes "<vendor>/<model>", the id a provider recognises. A
+    # key under `direct:` names a provider; its entries carry that provider.
     class Config
       # The request types a suite may declare. `prompt` is a chat completion:
       # system and user text in, text out. `typesafe` is TypeSafe's typed
@@ -30,11 +34,13 @@ module Agent
         "effort" => "default", "temperature" => 0.2, "max_tokens" => 4096, "parallelism" => 4
       }.freeze
 
-      attr_reader :path
+      attr_reader :path, :direct_providers
 
       # @param path [String] read when it exists; an absent file is an empty lineup
-      def initialize(path)
+      # @param direct_providers [Array<String>] the provider names `direct:` may use
+      def initialize(path, direct_providers: Providers::Registry.default.direct_names)
         @path = path
+        @direct_providers = direct_providers
         @data = File.exist?(path) ? (YAML.safe_load_file(path) || {}) : {}
       end
 
@@ -61,14 +67,24 @@ module Agent
       # @return [Hash{String => Object}] the built-in defaults under the file's own
       def defaults = BUILTIN.merge(@data.fetch("defaults", nil) || {})
 
-      # Every vendor/model/effort/temperature combination the file lists.
+      # Every vendor/model/effort/temperature combination the file lists,
+      # `vendors:` first, then `direct:`.
       #
       # @param overrides [Hash{String => Object}] values from the command line; nil entries are ignored
       # @return [Array<Contender>]
+      # @raise [Error] on a key under `direct:` that names no provider
       def contenders(overrides = {})
-        (@data["vendors"] || {}).flat_map do |vendor, entries|
+        vendors = (@data["vendors"] || {}).flat_map do |vendor, entries|
           Array(entries).flat_map { expand("#{vendor}/#{it.fetch("model")}", it, overrides) }
         end
+        direct = (@data["direct"] || {}).flat_map do |name, entries|
+          unless direct_providers.include?(name.to_s)
+            raise Error, "#{path}: unknown provider #{name.inspect} under direct:; known: #{direct_providers.join(", ")}"
+          end
+
+          Array(entries).flat_map { expand("#{name}/#{it.fetch("model")}", it, overrides, provider: name.to_sym) }
+        end
+        vendors + direct
       end
 
       # The models given on the command line, at the file's default settings.
@@ -82,10 +98,14 @@ module Agent
 
       private
 
-      def expand(model, entry, overrides)
+      def expand(model, entry, overrides, provider: nil)
         settings = defaults.merge(entry).merge(overrides.compact)
         Array(settings["effort"]).product(Array(settings["temperature"])).map do |effort, temperature|
-          Contender.new(model: model, effort: effort.to_s, temperature: temperature, max_tokens: Integer(settings["max_tokens"]))
+          Contender.new(model: model,
+            effort: effort.to_s,
+            temperature: temperature,
+            max_tokens: Integer(settings["max_tokens"]),
+            provider: provider)
         end
       end
     end

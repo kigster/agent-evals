@@ -20,6 +20,7 @@ RSpec.describe Agent::Evals::Launcher do
     let(:argv) { [] }
 
     it("prints help, titled after the suite") { expect(run_cli).to include("compare", "agent-evals (toy)", "The toy suite") }
+    it("lists the request types the providers own") { expect(run_cli).to include("typesafe (typed questions: noul, choice, score)") }
     it("exits 0") { run_cli && expect(kernel).to(have_received(:exit).with(0)) }
   end
 
@@ -46,7 +47,7 @@ RSpec.describe Agent::Evals::Launcher do
 
     it "names it on stderr" do
       run_cli
-      expect(stderr.string).to include("typesafe-api/jev-latest refused: needs typesafe; this suite produces prompt")
+      expect(stderr.string).to include("typesafe/jev-latest refused: needs typesafe; this suite produces prompt")
     end
   end
 
@@ -96,26 +97,32 @@ RSpec.describe Agent::Evals::Launcher do
     end
 
     it "leaves the refused contender out of the matrix and names it in the warnings" do
-      expect(run_cli).not_to include("typesafe-api/jev-latest")
+      expect(run_cli).not_to include("typesafe/jev-latest")
       expect(stderr.string.delete("│\n ")).to include('1Warningwasrecordedin')
       expect(File.read(Dir[File.join(log, "log", "*.warnings.*")].first))
-        .to eq("typesafe-api/jev-latest refused: needs typesafe; this suite produces prompt\n")
+        .to eq("typesafe/jev-latest refused: needs typesafe; this suite produces prompt\n")
     end
   end
 
   context "with run on a refused model alone" do
-    let(:argv) { %w[run -m typesafe-api/jev-latest --local] }
+    let(:dir) { Dir.mktmpdir }
+    let(:path) { File.join(dir, "lineup.yml") }
+    let(:argv) { ["run", "--local", "--config", path] }
+
+    before { File.write(path, "request_types: [prompt]\ndirect:\n  typesafe:\n    - model: jev-latest\n") }
+
+    after { FileUtils.remove_entry(dir) }
 
     it "stops with the refusal, before anything is set up" do
       run_cli
-      expect(stderr.string).to include("no admitted models: typesafe-api/jev-latest refused: needs typesafe; this suite produces prompt")
+      expect(stderr.string).to include("no admitted models: typesafe/jev-latest refused: needs typesafe; this suite produces prompt")
       expect(runtime).not_to have_received(:setup!)
       expect(kernel).to have_received(:exit).with(1)
     end
   end
 
   context "with run on a refused model and an admitted one" do
-    let(:argv) { %w[run -m fake/one,typesafe-api/jev-latest -d colors -c clear/001 --local] }
+    let(:argv) { %w[run -d colors -c clear/001 --local] }
     let(:log) { Dir.mktmpdir }
 
     before { allow(Dry::CLI::UI::Invocation).to receive(:root).and_return(log) }
@@ -123,9 +130,21 @@ RSpec.describe Agent::Evals::Launcher do
     after { FileUtils.remove_entry(log) }
 
     it "runs the admitted one and records the refusal" do
-      expect(run_cli).to include("fake/one").and(satisfy { !it.include?("typesafe-api") })
-      expect(File.read(Dir[File.join(log, "log", "*.warnings.*")].first)).to include("typesafe-api/jev-latest refused")
+      expect(run_cli).to include("fake/echo", "fake/parrot").and(satisfy { !it.include?("typesafe") })
+      expect(File.read(Dir[File.join(log, "log", "*.warnings.*")].first)).to include("typesafe/jev-latest refused")
     end
+  end
+
+  context "with run and a lineup naming an unknown direct provider" do
+    let(:dir) { Dir.mktmpdir }
+    let(:path) { File.join(dir, "lineup.yml") }
+    let(:argv) { ["run", "--local", "-n", "--config", path] }
+
+    before { File.write(path, "request_types: [prompt]\ndirect:\n  ollama:\n    - model: llama3\n") }
+
+    after { FileUtils.remove_entry(dir) }
+
+    it { run_cli && expect(stderr.string).to(include("#{path}: unknown provider \"ollama\" under direct:; known: typesafe")) }
   end
 
   context "with run and a lineup without request_types" do

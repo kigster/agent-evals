@@ -31,6 +31,9 @@ module Agent
       # @return [String] the id without the provider's prefix, as the provider's API knows it
       def name = provider.model_name(id)
 
+      # @return [String] "provider:id", unique where two providers render the same id
+      def key = "#{provider.name}:#{id}"
+
       # One call. Transport failures raise; they are the run's errors, not the model's.
       #
       # @param system [String, nil]

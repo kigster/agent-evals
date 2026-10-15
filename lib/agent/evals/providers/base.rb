@@ -20,6 +20,19 @@ module Agent
           raise NotImplementedError, "#{self.class}#request_type must be one of #{Config::REQUEST_TYPES.join(", ")}"
         end
 
+        # One line on what the request type is, for the README and `--help`;
+        # a suite's config never says it, the provider owns it.
+        #
+        # @return [String]
+        def request_type_description = ""
+
+        # A direct provider serves a vendor's own API and is reached only
+        # through a `direct:` entry that names it; it never claims an id from
+        # `vendors:`, however the id is spelled.
+        #
+        # @return [Boolean]
+        def direct? = false
+
         # @return [String] short name, for messages and the leaderboard
         def name = self.class.name.split("::").last.gsub(/([a-z\d])([A-Z])/, '\1-\2').downcase
 
