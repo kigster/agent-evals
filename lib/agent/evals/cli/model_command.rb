@@ -47,7 +47,7 @@ module Agent
             aliases: ["-d"],
             default: [],
             desc:    "Datasets, comma-separated; every dataset when omitted. Each model runs on each"
-          subclass.option :config, desc: "The lineup file (default: the suite's .agent-eval.config.yml)"
+          subclass.option :config, aliases: ["-C"], desc: "The lineup file (default: the suite's .agent-eval.config.yml)"
           subclass.option :effort, aliases: ["-e"], desc: "Reasoning effort: default, or one the provider accepts (overrides the config file)"
           subclass.option :temperature, aliases: ["-t"], desc: "Sampling temperature, or 'default' to send none (overrides the config file)"
           subclass.option :max_tokens, desc: "Output token cap, reasoning included (overrides the config file)"

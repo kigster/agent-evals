@@ -391,7 +391,7 @@ agent-evals completion zsh                     # shell completion (bash too)
 - `verify` reports empty inputs and missing or unparsable `expected.json`, then runs `adapter.verify(dataset)` and `scorer.verify`.
 - `run` and `compare` run one experiment per model and dataset, as many at once as the machine has CPUs. `-j N` / `--concurrency N` sets another limit, and `-j 0` starts them all together. `-p` is separate: the cases in flight inside each experiment.
 
-Flags shared by `run` and `compare`: `-m/--models`, `-d/--dataset` (every dataset when omitted), `-c/--case`, `-e/--effort`, `-t/--temperature`, `--max-tokens`, `-p/--parallelism`, `-j/--concurrency`, `--config FILE`, `--project NAME`, `--tracker NAME`, `--local`, `--no-open`, `-n/--dry-run`, `-o/--output [FILE]`. `-l` and `-L` are reserved for logging and not yet implemented.
+Flags shared by `run` and `compare`: `-m/--models`, `-d/--dataset` (every dataset when omitted), `-c/--case`, `-e/--effort`, `-t/--temperature`, `--max-tokens`, `-p/--parallelism`, `-j/--concurrency`, `-C/--config FILE`, `--project NAME`, `--tracker NAME`, `--local`, `--no-open`, `-n/--dry-run`, `-o/--output [FILE]`. `-l` and `-L` are reserved for logging and not yet implemented.
 
 **Reading the output.** The leaderboard has one column per metric the scorer declares, ranked by the `primary` one, with a glossary built from each metric's `description`. STDOUT carries the tables. Progress bars and warnings go to STDERR, and anything a library prints while the bars redraw is saved to `log/<command>.warnings.<stamp>.log` instead of garbling the screen.
 

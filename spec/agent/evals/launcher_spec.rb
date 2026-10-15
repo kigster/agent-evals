@@ -366,6 +366,15 @@ RSpec.describe Agent::Evals::Launcher do
       expect(run_cli).to include("fake/other")
     end
 
+    context "when given as -C" do
+      let(:argv) { ["run", "--local", "-n", "-C", File.join(dir, "lineup.yml")] }
+
+      it "reads it" do
+        File.write(File.join(dir, "lineup.yml"), "request_types: [prompt]\nvendors:\n  fake:\n    - model: other\n")
+        expect(run_cli).to include("fake/other")
+      end
+    end
+
     it "fails on an empty one" do
       run_cli
       expect(stderr.string).to include("no models: list some under vendors")
