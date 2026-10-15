@@ -1,0 +1,89 @@
+inherit_from:
+  - .relaxed_rubocop.yml
+
+plugins:
+  - rubocop-rake
+  - rubocop-rspec
+
+AllCops:
+  SuggestExtensions: false
+  TargetRubyVersion: 3.4
+  NewCops: enable
+  Include:
+    - '**/*.rb'
+    - Gemfile
+    - justfile.rb
+    - '*.gemspec'
+  Exclude:
+    - vendor/**/*
+    - tmp/**/*
+
+# The executable and the toy suite's helper are named for what they are, not for a constant.
+Naming/FileName:
+  Exclude:
+    - exe/*
+    - spec/fixtures/**/*
+
+Style/StringLiterals:
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes
+
+Layout/LineLength:
+  Max: 140
+
+# --- Alignment rules ---
+
+Layout/ArgumentAlignment:
+  EnforcedStyle: with_fixed_indentation
+
+Layout/HashAlignment:
+  EnforcedColonStyle: table
+  EnforcedHashRocketStyle: table
+
+Layout/MultilineMethodArgumentLineBreaks:
+  Enabled: true
+
+Layout/FirstArgumentIndentation:
+  EnforcedStyle: consistent
+
+Layout/ParameterAlignment:
+  EnforcedStyle: with_fixed_indentation
+
+Layout/ExtraSpacing:
+  AllowForAlignment: true
+
+# --- RSpec ---
+
+RSpec/DescribeClass:
+  Enabled: false
+
+RSpec/ExampleLength:
+  Max: 20
+
+RSpec/MultipleExpectations:
+  Enabled: false
+
+RSpec/MultipleMemoizedHelpers:
+  Max: 8
+
+RSpec/NestedGroups:
+  Max: 4
+
+# --- Relaxed rules ---
+
+Style/Documentation:
+  Enabled: false
+
+Style/FrozenStringLiteralComment:
+  Enabled: false
+
+Style/OptionalBooleanParameter:
+  Enabled: false
+
+Naming/PredicateMethod:
+  Enabled: false
+
+Style/SingleArgumentDig:
+  Enabled: false
