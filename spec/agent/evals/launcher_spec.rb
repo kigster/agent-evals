@@ -264,6 +264,67 @@ RSpec.describe Agent::Evals::Launcher do
     it { expect(run_cli).to include("fake/a", "fake/b", "Term", "Description", "field_accuracy") }
   end
 
+  describe "experiments at once" do
+    let(:concurrent) { [] }
+
+    before do
+      allow(Etc).to receive(:nprocessors).and_return(3)
+      allow(Agent::Evals::CLI::ProgressBars).to receive(:for).and_wrap_original do |build, *args|
+        build.call(*args).tap do |bars|
+          allow(bars).to receive(:run).and_wrap_original do |original, *rest, **kwargs, &block|
+            concurrent << kwargs[:concurrent]
+            original.call(*rest, **kwargs, &block)
+          end
+        end
+      end
+    end
+
+    context "with run and no -j" do
+      let(:argv) { %w[run -d colors -c clear/001 --local] }
+
+      it("runs one per CPU") { run_cli && expect(concurrent).to(eq([3])) }
+    end
+
+    context "with compare and no -j" do
+      let(:argv) { %w[compare -c clear/001 --local] }
+
+      it("runs one per CPU") { run_cli && expect(concurrent).to(eq([3])) }
+    end
+
+    context "with run -j 1" do
+      let(:argv) { %w[run -d colors -c clear/001 --local -j 1] }
+
+      it("runs them one at a time") { run_cli && expect(concurrent).to(eq([1])) }
+    end
+
+    context "with compare --concurrency 0" do
+      let(:argv) { %w[compare -c clear/001 --local --concurrency 0] }
+
+      it("runs them all together") { run_cli && expect(concurrent).to(eq([true])) }
+    end
+
+    context "with a -j that is not a number" do
+      let(:argv) { %w[run -d colors -c clear/001 --local -j many] }
+
+      it "exits 1 and says why, before anything runs" do
+        run_cli
+        expect(kernel).to have_received(:exit).with(1)
+        expect(stderr.string).to include('--concurrency must be a whole number, got "many"')
+        expect(concurrent).to be_empty
+      end
+    end
+
+    context "with a negative -j" do
+      let(:argv) { %w[run -d colors -c clear/001 --local -j -2] }
+
+      it "exits 1 and says why" do
+        run_cli
+        expect(kernel).to have_received(:exit).with(1)
+        expect(stderr.string).to include("--concurrency must be 0 or more, got -2")
+      end
+    end
+  end
+
   context "with run and no model" do
     let(:argv) { %w[run -d colors -c clear --local] }
 

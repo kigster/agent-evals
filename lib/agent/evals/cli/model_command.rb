@@ -47,7 +47,7 @@ module Agent
             aliases: ["-d"],
             default: [],
             desc:    "Datasets, comma-separated; every dataset when omitted. Each model runs on each"
-          subclass.option :config, desc: "The lineup file (default: the suite's .agent-eval..agent-eval.config.yml)"
+          subclass.option :config, desc: "The lineup file (default: the suite's .agent-eval.config.yml)"
           subclass.option :effort, aliases: ["-e"], desc: "Reasoning effort: default, or one the provider accepts (overrides the config file)"
           subclass.option :temperature, aliases: ["-t"], desc: "Sampling temperature, or 'default' to send none (overrides the config file)"
           subclass.option :max_tokens, desc: "Output token cap, reasoning included (overrides the config file)"
@@ -57,6 +57,9 @@ module Agent
             default: [],
             desc:    "Only these cases, by id prefix: -c clear or -c clear/003,vague/001"
           subclass.option :parallelism, aliases: ["-p"], desc: "Cases in flight at once, per model (default: the config's defaults.parallelism)"
+          subclass.option :concurrency,
+            aliases: ["-j"],
+            desc:    "Experiments running at once; 0 runs them all together (default: the number of CPUs)"
           subclass.option :project,
             desc: "Braintrust project name; default is the BRAINTRUST_PROJECT_ID project, else the config file's project"
           subclass.option :open,
@@ -179,11 +182,24 @@ module Agent
         # @param runs [Array<Experiment>]
         # @param concurrency [Integer] experiments at once; 0 runs them all together
         # @return [Array<Experiment::Summary>]
-        def execute(runs, concurrency: 0)
+        def execute(runs, concurrency:)
           summaries = Array.new(runs.size)
           warnings.capture { bars(runs, summaries, concurrency) }
           summaries.compact.each { |s| s.errors.each { warnings.record("[#{s.name}] #{it}") } }
           summaries.compact
+        end
+
+        # -j, else one experiment per CPU. Uncapped, a full lineup started
+        # every model x dataset pair at once: 140 experiments, each with its
+        # own pool of case threads, all fighting for the network and the screen.
+        #
+        # @return [Integer] experiments at once; 0 means all of them
+        # @raise [Error] on a negative or non-numeric -j
+        def concurrency(options)
+          value = options[:concurrency] || Etc.nprocessors
+          Integer(value).tap { raise Error, "--concurrency must be 0 or more, got #{value}" if it.negative? }
+        rescue ArgumentError, TypeError
+          raise Error, "--concurrency must be a whole number, got #{value.inspect}"
         end
 
         # @return [Warnings] what this command has held back from the screen
