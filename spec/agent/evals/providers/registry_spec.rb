@@ -20,6 +20,13 @@ RSpec.describe Agent::Evals::Providers::Registry do
   it { expect { registry.direct(:ollama) }.to raise_error(Agent::Evals::Error, /no direct provider "ollama"; have typesafe/) }
   it { expect(registry.efforts).to eq(Agent::Evals::Providers::OpenRouter::EFFORTS) }
 
+  it "replaces a provider registered under the same name" do
+    registry.register(fake)
+    other = Agent::Evals::Testing::FakeProvider.new
+    registry.register(other)
+    expect(registry.select { it.name == "fake" }).to eq([other])
+  end
+
   it "asks the last registered provider first" do
     registry.register(fake)
     expect(registry.for("fake/x")).to be(fake)

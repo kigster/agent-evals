@@ -19,9 +19,14 @@ module Agent
           @providers = providers.dup
         end
 
+        # Registering a provider under a name already taken replaces it, so a
+        # helper and a required file that both register the same provider
+        # leave one, not two that would be asked twice.
+        #
         # @param provider [Base]
         # @return [Base] the provider
         def register(provider)
+          @providers.reject! { it.name == provider.name }
           @providers << provider
           provider
         end

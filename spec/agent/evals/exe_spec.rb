@@ -6,8 +6,8 @@
 RSpec.describe "exe/agent-evals" do
   let(:exe) { File.expand_path("../../../exe/agent-evals", __dir__) }
 
-  def run_exe(*, from: TOY_SUITE)
-    Open3.capture3({ "BUNDLE_GEMFILE" => File.expand_path("../../../Gemfile", __dir__), "NO_COLOR" => "1" },
+  def run_exe(*, from: TOY_SUITE, env: {})
+    Open3.capture3({ "BUNDLE_GEMFILE" => File.expand_path("../../../Gemfile", __dir__), "NO_COLOR" => "1", **env },
       "bundle",
       "exec",
       exe,
@@ -44,6 +44,12 @@ RSpec.describe "exe/agent-evals" do
     expect(status.exitstatus).to eq(0), stderr
     expect(stdout).to include("fake/echo", "colors", "100.0%", "field_accuracy", "braintrust_url")
     expect(stderr).to include("Running 1 experiment")
+  end
+
+  it "runs a config-only suite, with the Ruby it names on the load path" do
+    stdout, stderr, status = run_exe("verify", from: CONFIG_ONLY_SUITE, env: { "RUBYLIB" => File.join(TOY_SUITE, "lib") })
+    expect(status.exitstatus).to eq(0), stderr
+    expect(stdout).to include("8 cases verified")
   end
 
   it "says what is missing without a suite" do

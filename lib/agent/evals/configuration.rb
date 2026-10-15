@@ -117,11 +117,45 @@ module Agent
       # @return [self]
       # @raise [Error]
       def require_suite!
+        resolve_from_config!
         return self if complete?
 
         raise Error,
-          "no suite is configured: create evals/eval_helper.rb calling Agent::Evals.configure " \
-          "with an adapter and a scorer, or pass --helper PATH (or set AGENT_EVALS_HELPER)"
+          "no suite is configured: register an adapter and a scorer in evals/eval_helper.rb, or set " \
+          "adapter: and scorer: (with require:) in #{config}; --helper PATH or AGENT_EVALS_HELPER names another helper"
+      end
+
+      # Fills whatever the helper left unset from the config file's `require:`,
+      # `adapter:` and `scorer:` keys, so a suite can be config-only: its Ruby
+      # lives in its own gem and `evals/` holds the file and the datasets. The
+      # helper, when there is one, was loaded first and wins.
+      #
+      # @return [void]
+      # @raise [Error] naming the key and the value when a require fails or a constant is unknown
+      def resolve_from_config!
+        return if complete? || !File.exist?(config)
+
+        file = lineup
+        file.requires.each do |feature|
+          require feature
+        rescue LoadError => e
+          raise Error, "#{config}: require: #{feature} could not be loaded (#{e.message}); is its gem in the bundle?"
+        end
+        @adapter ||= instantiate("adapter", file.adapter_name)
+        @scorer ||= instantiate("scorer", file.scorer_name) # rubocop:disable Naming/MemoizedInstanceVariableName
+      end
+
+      private
+
+      # @return [Object, nil] a new instance of the named constant; nil when no name is set
+      def instantiate(key, name)
+        return nil if name.nil? || name.empty?
+
+        Object.const_get(name).new
+      rescue NameError, ArgumentError => e
+        raise Error,
+          "#{config}: #{key}: #{name} could not be instantiated (#{e.class}: #{e.message}); " \
+          "name a constant the require: key loads, taking no arguments"
       end
     end
   end

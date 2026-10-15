@@ -24,6 +24,8 @@ require "agent/evals"
 # of their own rather than reconfiguring the global one.
 TOY_SUITE = File.expand_path("fixtures/toy_suite", __dir__)
 TOY_HELPER = File.join(TOY_SUITE, "evals", "eval_helper.rb")
+$LOAD_PATH.unshift(File.join(TOY_SUITE, "lib"))
+CONFIG_ONLY_SUITE = File.expand_path("fixtures/config_only_suite", __dir__)
 require TOY_HELPER
 
 Dir[File.join(__dir__, "support", "*.rb")].each { require it }

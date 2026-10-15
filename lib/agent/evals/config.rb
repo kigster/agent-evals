@@ -9,6 +9,9 @@ module Agent
     #
     #   project: my-evals            # Braintrust project name
     #   request_types: [prompt]      # required: what the adapter sends; a provider must match
+    #   require: my_gem/evals        # optional: a path (or list) to require, for a suite with no eval_helper.rb
+    #   adapter: MyGem::Evals::Adapter   # optional: constant names, instantiated with no arguments
+    #   scorer: MyGem::Evals::Scorer
     #   defaults:
     #     effort: default
     #     temperature: 0.2
@@ -46,6 +49,15 @@ module Agent
 
       # @return [String, nil] the Braintrust project name
       def project = @data["project"]
+
+      # @return [Array<String>] the `require:` key, one path or a list
+      def requires = Array(@data["require"]).map(&:to_s)
+
+      # @return [String, nil] the `adapter:` constant name
+      def adapter_name = @data["adapter"]&.to_s
+
+      # @return [String, nil] the `scorer:` constant name
+      def scorer_name = @data["scorer"]&.to_s
 
       # The kinds of request the suite's adapter produces. A provider whose
       # request type is not listed cannot serve this suite, whatever model it

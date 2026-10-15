@@ -339,6 +339,36 @@ RSpec.describe Agent::Evals::Launcher do
     end
   end
 
+  context "with a config-only suite" do
+    let(:argv) { ["cases"] }
+    let(:fresh) { Agent::Evals::Configuration.new }
+
+    before { allow(Agent::Evals).to receive(:configuration).and_return(fresh) }
+
+    def run_from_suite
+      Dir.chdir(CONFIG_ONLY_SUITE) { run_cli }
+    end
+
+    it "finds the config upward, loads the Ruby it names, and lists the cases" do
+      expect(run_from_suite).to include("colors", "3/3 answered")
+      expect(fresh).to have_attributes(name: "config_only_suite", root: File.join(CONFIG_ONLY_SUITE, "evals"))
+      expect(fresh.adapter).to be_a(ToySuite::Evals::Adapter)
+    end
+
+    context "when running a model" do
+      let(:argv) { %w[run --local -d colors -c clear/001 --no-open] }
+
+      # toy_suite/evals registers the fake provider when first required, which
+      # happened on the spec run's own configuration; a fresh process would get it.
+      before do
+        allow(fresh).to receive(:runtime).and_return(runtime)
+        fresh.provider Agent::Evals::Testing::FakeProvider.new
+      end
+
+      it { expect(run_from_suite).to include("fake/echo", "100.0%") }
+    end
+  end
+
   context "without a suite" do
     let(:argv) { ["cases"] }
 

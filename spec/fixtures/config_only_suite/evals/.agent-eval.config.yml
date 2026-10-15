@@ -1,0 +1,15 @@
+# The toy suite again, config-only: no eval_helper.rb. The Ruby comes from
+# the toy suite's lib/ (on the load path), named here by constant.
+project: config-only
+request_types: [prompt]
+require: toy_suite/evals
+adapter: ToySuite::Evals::Adapter
+scorer: ToySuite::Evals::Scorer
+defaults:
+  effort: default
+  temperature: 0.2
+  max_tokens: 256
+  parallelism: 2
+vendors:
+  fake:
+    - model: echo

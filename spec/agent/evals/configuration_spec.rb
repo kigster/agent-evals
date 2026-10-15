@@ -9,8 +9,64 @@ RSpec.describe Agent::Evals::Configuration do
   it { expect(configuration.config).to eq(File.join(Dir.pwd, ".agent-eval.config.yml")) }
   it { expect(configuration.providers.map(&:name)).to eq(%w[typesafe openrouter]) }
 
-  it "refuses to serve a command without a suite" do
-    expect { configuration.require_suite! }.to raise_error(Agent::Evals::Error, %r{create evals/eval_helper\.rb})
+  it "refuses to serve a command without a suite, naming the file and the keys" do
+    expect { configuration.require_suite! }
+      .to raise_error(Agent::Evals::Error, %r{register an adapter and a scorer in evals/eval_helper\.rb, or set adapter: and scorer: \(with require:\) in #{Regexp.escape(configuration.config)}})
+  end
+
+  describe "#resolve_from_config!" do
+    let(:dir) { Dir.mktmpdir }
+    let(:path) { File.join(dir, ".agent-eval.config.yml") }
+
+    before { configuration.suite "cfg", root: dir }
+
+    after { FileUtils.remove_entry(dir) }
+
+    def write(yaml) = File.write(path, yaml)
+
+    it "fills the adapter and the scorer from the file" do
+      write("require: toy_suite/evals\nadapter: ToySuite::Evals::Adapter\nscorer: ToySuite::Evals::Scorer\n")
+      expect(configuration.require_suite!.adapter).to be_a(ToySuite::Evals::Adapter)
+      expect(configuration.scorer).to be_a(ToySuite::Evals::Scorer)
+    end
+
+    it "lets the helper win and fills only what it left unset" do
+      adapter = Agent::Evals::Testing::EchoAdapter.new
+      configuration.adapter adapter
+      write("require: [toy_suite/evals]\nadapter: ToySuite::Evals::Adapter\nscorer: ToySuite::Evals::Scorer\n")
+      configuration.require_suite!
+      expect(configuration.adapter).to be(adapter)
+      expect(configuration.scorer).to be_a(ToySuite::Evals::Scorer)
+    end
+
+    it "names the key and the value of a require that fails" do
+      write("require: no_such_evals_gem\nadapter: X\nscorer: Y\n")
+      expect { configuration.require_suite! }
+        .to raise_error(Agent::Evals::Error, /#{Regexp.escape(path)}: require: no_such_evals_gem could not be loaded \(cannot load such file/)
+    end
+
+    it "names the key and the value of an unknown constant" do
+      write("adapter: ToySuite::Evals::Nope\nscorer: ToySuite::Evals::Scorer\n")
+      expect { configuration.require_suite! }
+        .to raise_error(Agent::Evals::Error, /#{Regexp.escape(path)}: adapter: ToySuite::Evals::Nope could not be instantiated \(NameError/)
+    end
+
+    it "names the key of a constant that cannot be built without arguments" do
+      write("adapter: ToySuite::Evals::Adapter\nscorer: Agent::Evals::Metric\n")
+      expect { configuration.require_suite! }.to raise_error(Agent::Evals::Error, /scorer: Agent::Evals::Metric could not be instantiated \(ArgumentError/)
+    end
+
+    it "still fails without the keys, naming them" do
+      write("request_types: [prompt]\n")
+      expect { configuration.require_suite! }.to raise_error(Agent::Evals::Error, /set adapter: and scorer: \(with require:\) in #{Regexp.escape(path)}/)
+    end
+
+    it "does nothing once complete" do
+      configuration.adapter Agent::Evals::Testing::EchoAdapter.new
+      configuration.scorer ToySuite::Evals::Scorer.new
+      write("require: no_such_evals_gem\n")
+      expect { configuration.require_suite! }.not_to raise_error
+    end
   end
 
   context "when configured" do
