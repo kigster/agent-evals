@@ -70,6 +70,22 @@ RSpec.describe Agent::Evals::Config do
     it { expect { config.request_types }.to raise_error(Agent::Evals::Error, /#{Regexp.escape(path)}: request_types is required; list one or more of prompt, typesafe/) }
   end
 
+  describe "#tracker and #tracker_options" do
+    it "reads one tracker and its section" do
+      File.write(path, "tracker: logfire\nlogfire:\n  include_replies: true\n")
+      expect(config.tracker).to eq("logfire")
+      expect(config.tracker_options("logfire")).to eq("include_replies" => true)
+      expect(config.tracker_options("braintrust")).to eq({})
+    end
+
+    it { expect(config.tracker).to be_nil }
+
+    it "refuses a list of several" do
+      File.write(path, "tracker: [braintrust, logfire]\n")
+      expect { config.tracker }.to raise_error(Agent::Evals::Error, /#{Regexp.escape(path)}: tracker: names braintrust, logfire; exactly one remote tracker runs, or none/)
+    end
+  end
+
   describe "#request_types" do
     it "reads the declared types as symbols" do
       File.write(path, "request_types: [prompt, typesafe]\n")

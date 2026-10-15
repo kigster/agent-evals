@@ -42,7 +42,7 @@ RSpec.describe "exe/agent-evals" do
   it "runs the fake model end to end" do
     stdout, stderr, status = run_exe("run", "--local", "-m", "fake/echo", "-d", "colors", "--no-open")
     expect(status.exitstatus).to eq(0), stderr
-    expect(stdout).to include("fake/echo", "colors", "100.0%", "field_accuracy", "braintrust_url")
+    expect(stdout).to include("fake/echo", "colors", "100.0%", "field_accuracy", "url")
     expect(stderr).to include("Running 1 experiment")
   end
 

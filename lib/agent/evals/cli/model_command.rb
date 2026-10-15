@@ -66,7 +66,10 @@ module Agent
           subclass.option :local,
             type:    :boolean,
             default: false,
-            desc:    "Score locally without logging to Braintrust (still calls the models)"
+            desc:    "No remote tracker: results go to log/ only (still calls the models)"
+          subclass.option :tracker,
+            desc: "The remote tracker: braintrust, logfire, none, or one the suite registers " \
+                  "(default: the config's tracker:, else the one whose key is in the environment)"
         end
 
         private
@@ -94,11 +97,36 @@ module Agent
             cases:       cases_for(options[:case], dataset: dataset),
             adapter:     configuration.adapter,
             scorer:      scorer,
-            project:     options[:local] ? nil : (options[:project] || config.project || configuration.project || configuration.name),
-            project_id:  options[:local] || options[:project] ? nil : ENV["BRAINTRUST_PROJECT_ID"].to_s[/\S+/],
             parallelism: Integer(options[:parallelism] || config.defaults["parallelism"]),
-            suite:       configuration.name
+            trackers:    trackers_for(config, options)
           )
+        end
+
+        # The local JSON log, always, then the one remote tracker if any,
+        # each experiment getting instances of its own.
+        #
+        # @return [Array<Tracker>]
+        def trackers_for(config, options)
+          context = { suite:      configuration.name,
+                      project:    options[:project] || config.project || configuration.project || configuration.name,
+                      project_id: options[:project] ? nil : ENV["BRAINTRUST_PROJECT_ID"].to_s[/\S+/] }
+          local = Trackers::Local.new(dir: File.join(Dry::CLI::UI::Invocation.root(Dir.pwd), "log", "agent-evals"), **context)
+          klass = remote_tracker(config, options)
+          remote = klass&.new(**context, options: config.tracker_options(klass.tracker_name))
+          [local, remote].compact
+        end
+
+        # The remote tracker class this run uses, chosen once: --tracker,
+        # then tracker: in the config, then the environment. --local is none.
+        #
+        # @return [Class<Tracker>, nil]
+        def remote_tracker(config, options)
+          return @remote_tracker if defined?(@remote_tracker)
+
+          chosen = configuration.trackers.choose(flag: options[:tracker], config: config.tracker, env: ENV, local: options[:local])
+          @remote_tracker = chosen&.first
+          err.puts "tracker: #{chosen ? "#{chosen.first.tracker_name}, because #{chosen.last}" : "none"}" if options[:verbose]
+          @remote_tracker
         end
 
         # The contenders a command runs: the models named on the command line,
@@ -130,9 +158,9 @@ module Agent
           admitted
         end
 
-        # Env, hooks, provider clients, Braintrust, then the catalogs.
+        # Env, the tracker's gems and key, hooks, provider clients, then the catalogs.
         def setup!(contenders, options)
-          configuration.runtime.setup!(providers: providers.used_by(contenders), braintrust: !options[:local])
+          configuration.runtime.setup!(providers: providers.used_by(contenders), tracker: remote_tracker(lineup(options), options))
           providers.verify!(contenders)
         end
 
@@ -318,7 +346,7 @@ module Agent
           rows = summaries.sort_by { -(it.score || -1) }.map do |s|
             [s.model.id, s.model.effort || "default", s.dataset, percent(s.score), dollars(s.usage.cost_usd), s.permalink || "-"]
           end
-          table(rows, header: %w[model effort dataset score cost braintrust_url], fill: 0)
+          table(rows, header: %w[model effort dataset score cost url], fill: 0)
         end
 
         # The best value in each dataset's block of the leaderboard.

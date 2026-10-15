@@ -5,8 +5,8 @@ require "dotenv"
 module Agent
   module Evals
     # One-time process setup: secrets from the suite's env files, a check that
-    # every key the run needs is there, the suite's own hooks, the providers'
-    # clients, and Braintrust tracing when the run logs there.
+    # every key and gem the run needs is there, the suite's own hooks, and
+    # the providers' clients.
     class Runtime
       attr_reader :env_files, :hooks, :app_name
 
@@ -50,19 +50,15 @@ module Agent
       end
 
       # @param providers [Array<Providers::Base>] the providers the run's models use
-      # @param braintrust [Boolean] false runs locally: no login, no experiment
+      # @param tracker [Class<Tracker>, nil] the remote tracker chosen, whose gems and key are checked too
       # @return [void]
-      # @raise [Error] when a needed variable is missing
-      def setup!(providers: [], braintrust: true)
+      # @raise [Error] when a needed variable or gem is missing
+      def setup!(providers: [], tracker: nil)
         load_env
-        require_env!(providers.flat_map(&:env_keys) + (braintrust ? ["BRAINTRUST_API_KEY"] : []))
+        require_env!(providers.flat_map(&:env_keys))
+        tracker&.requirements!(ENV)
         hooks.each(&:call) # after load_env: a hook usually re-reads ENV
         providers.each { it.setup!(app_name: app_name) }
-        return unless braintrust
-
-        Agent::Evals.optional!("braintrust", needed_for: "logging to Braintrust")
-        Braintrust.init(blocking_login: true, auto_instrument: false)
-        Braintrust.instrument!(:ruby_llm) if defined?(RubyLLM)
       end
 
       # Opens a URL in the desktop browser.

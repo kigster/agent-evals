@@ -162,9 +162,9 @@ RSpec.describe Agent::Evals::Launcher do
   context "with run on one dataset" do
     let(:argv) { %w[run -m fake/one -d colors -c vague --local] }
 
-    it "runs, sets the runtime up without Braintrust, and reports" do
+    it "runs, sets the runtime up without a remote tracker, and reports" do
       expect(run_cli).to include("fake/one", "vague/001", "100.0%", "field_accuracy")
-      expect(runtime).to have_received(:setup!).with(providers: [configuration.providers.for("fake/one")], braintrust: false)
+      expect(runtime).to have_received(:setup!).with(providers: [configuration.providers.for("fake/one")], tracker: nil)
     end
   end
 
@@ -186,12 +186,12 @@ RSpec.describe Agent::Evals::Launcher do
     end
 
     it "keeps the leaderboard, glossary and scores on the screen" do
-      expect(run_cli).to include("restraint", "Description", "braintrust_url")
+      expect(run_cli).to include("restraint", "Description", "url")
     end
 
     it "writes all of it to the file, in color, ending with the time" do
       run_cli
-      expect(File.read(path)).to include("diagnostics", "Description", "braintrust_url", "\e[1m").and(match(/Closed at .+\n\z/))
+      expect(File.read(path)).to include("diagnostics", "Description", "url", "\e[1m").and(match(/Closed at .+\n\z/))
     end
   end
 
@@ -377,38 +377,21 @@ RSpec.describe Agent::Evals::Launcher do
     it { run_cli && expect(stderr.string).to(include("no suite is configured")) }
   end
 
-  context "with a run logged to Braintrust" do
-    let(:argv) { %w[run -m fake/one -d colors -c clear/001] }
-    let(:summary) do
-      Agent::Evals::Experiment::Summary.new(
-        model:     Agent::Evals::Testing::FakeModel.new(id: "fake/one"),
-        dataset:   "colors",
-        name:      "fake/one effort=default t=0.2 [colors]",
-        means:     { "field_accuracy" => 1.0, "exact_match" => 1.0, "restraint" => nil, "score" => 1.0 },
-        results:   [],
-        errors:    [],
-        duration:  1.0,
-        permalink: "https://example.com/exp",
-        usage:     Agent::Evals::Usage.zero
-      )
-    end
+  context "with a remote tracker" do
+    let(:argv) { %w[run -m fake/one -d colors -c clear/001 --tracker recording-tracker] }
     let(:opened) { true }
 
     before do
+      configuration.trackers.register(RecordingTracker)
+      allow(RecordingTracker).to(receive(:new).and_wrap_original { |m, **kw| m.call(url: "https://example.com/exp", **kw) })
       allow(runtime).to receive(:browse).and_return(opened)
-      allow(Agent::Evals::Experiment).to receive(:new).and_return(
-        instance_double(Agent::Evals::Experiment, name: "fake", cases: configuration.discovery.cases(dataset: "colors"), run: summary)
-      )
     end
 
-    it "sets the runtime up for Braintrust and shows the link" do
+    it "checks the tracker in setup, shows the link and opens it" do
       expect(run_cli).to include("https://example.com/exp")
-      expect(runtime).to have_received(:setup!).with(hash_including(braintrust: true))
-    end
-
-    it "opens the experiment" do
-      run_cli
+      expect(runtime).to have_received(:setup!).with(hash_including(tracker: RecordingTracker))
       expect(runtime).to have_received(:browse).with("https://example.com/exp")
+      expect(RecordingTracker).to have_received(:new).with(hash_including(suite: "toy", project: "toy-suite", options: {}))
     end
 
     context "when the browser cannot be opened" do
@@ -418,12 +401,45 @@ RSpec.describe Agent::Evals::Launcher do
     end
 
     context "with --no-open" do
-      let(:argv) { %w[run -m fake/one -d colors -c clear/001 --no-open] }
+      let(:argv) { %w[run -m fake/one -d colors -c clear/001 --tracker recording-tracker --no-open] }
 
       it "leaves the browser alone" do
         run_cli
         expect(runtime).not_to have_received(:browse)
       end
+    end
+
+    context "with --verbose" do
+      let(:argv) { %w[run -m fake/one -d colors -c clear/001 --tracker recording-tracker -v] }
+
+      it { run_cli && expect(stderr.string).to(include("tracker: recording-tracker, because --tracker")) }
+    end
+  end
+
+  context "with an unknown tracker" do
+    let(:argv) { %w[run -m fake/one --tracker weave] }
+
+    it { run_cli && expect(stderr.string).to(include('no tracker named "weave"')) }
+  end
+
+  context "with two trackers in the environment and none chosen" do
+    let(:argv) { %w[run -m fake/one -d colors -c clear/001] }
+
+    around do |example|
+      ENV["BRAINTRUST_API_KEY"] = "k"
+      ENV["LOGFIRE_TOKEN"] = "t"
+      example.run
+    ensure
+      ENV.delete("BRAINTRUST_API_KEY")
+      ENV.delete("LOGFIRE_TOKEN")
+    end
+
+    it { run_cli && expect(stderr.string).to(include("more than one tracker is configured in the environment")) }
+
+    context "with --local" do
+      let(:argv) { %w[run -m fake/one -d colors -c clear/001 --local] }
+
+      it { expect(run_cli).to include("100.0%") }
     end
   end
 end

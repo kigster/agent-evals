@@ -9,6 +9,9 @@ module Agent
     #
     #   project: my-evals            # Braintrust project name
     #   request_types: [prompt]      # required: what the adapter sends; a provider must match
+    #   tracker: braintrust          # optional: the one remote tracker; else the environment decides
+    #   logfire:                     # optional: a tracker's own settings
+    #     include_replies: true
     #   require: my_gem/evals        # optional: a path (or list) to require, for a suite with no eval_helper.rb
     #   adapter: MyGem::Evals::Adapter   # optional: constant names, instantiated with no arguments
     #   scorer: MyGem::Evals::Scorer
@@ -49,6 +52,24 @@ module Agent
 
       # @return [String, nil] the Braintrust project name
       def project = @data["project"]
+
+      # The remote tracker the file chooses; a list of more than one is an
+      # error, since exactly one remote tracker runs, or none.
+      #
+      # @return [String, nil]
+      # @raise [Error] on a list of several
+      def tracker
+        listed = Array(@data["tracker"]).map(&:to_s)
+        raise Error, "#{path}: tracker: names #{listed.join(", ")}; exactly one remote tracker runs, or none" if listed.size > 1
+
+        listed.first
+      end
+
+      # A tracker's own section of the file, e.g. `logfire: { include_replies: true }`.
+      #
+      # @param name [String]
+      # @return [Hash]
+      def tracker_options(name) = (@data[name.to_s].is_a?(Hash) ? @data[name.to_s] : {}).transform_keys(&:to_s)
 
       # @return [Array<String>] the `require:` key, one path or a list
       def requires = Array(@data["require"]).map(&:to_s)

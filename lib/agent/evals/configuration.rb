@@ -9,7 +9,7 @@ module Agent
       DEFAULT_CONFIG = ".agent-eval.config.yml"
 
       attr_writer :adapter, :scorer
-      attr_reader :name, :root, :env_files, :cases_glob, :hooks, :providers, :description
+      attr_reader :name, :root, :env_files, :cases_glob, :hooks, :providers, :trackers, :description
 
       def initialize
         @name = "agent-evals"
@@ -19,6 +19,7 @@ module Agent
         @config_path = DEFAULT_CONFIG
         @hooks = []
         @providers = Providers::Registry.default
+        @trackers = Trackers::Registry.default
         @description = "Run a suite of cases against one or more models and score the replies."
         @project = nil
       end
@@ -83,6 +84,15 @@ module Agent
       # @return [void]
       def provider(provider)
         @providers.register(provider)
+      end
+
+      # Adds a tracker class, so a run can choose it by name with `--tracker`
+      # or `tracker:`, or have its env key select it.
+      #
+      # @param klass [Class<Tracker>]
+      # @return [void]
+      def tracker(klass)
+        @trackers.register(klass)
       end
 
       # @param path [String, nil] setting, relative to root; reading when nil

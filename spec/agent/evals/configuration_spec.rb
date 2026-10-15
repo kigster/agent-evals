@@ -8,6 +8,12 @@ RSpec.describe Agent::Evals::Configuration do
   it { is_expected.not_to be_complete }
   it { expect(configuration.config).to eq(File.join(Dir.pwd, ".agent-eval.config.yml")) }
   it { expect(configuration.providers.map(&:name)).to eq(%w[typesafe openrouter]) }
+  it { expect(configuration.trackers.names).to eq(%w[braintrust logfire]) }
+
+  it "registers a tracker" do
+    configuration.tracker RecordingTracker
+    expect(configuration.trackers.named("recording-tracker")).to be(RecordingTracker)
+  end
 
   it "refuses to serve a command without a suite, naming the file and the keys" do
     expect { configuration.require_suite! }

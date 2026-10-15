@@ -51,32 +51,18 @@ RSpec.describe Agent::Evals::Runtime do
     before { allow(provider).to receive(:setup!) }
 
     it "loads env, runs the hooks and sets the providers up" do
-      runtime.setup!(providers: [provider], braintrust: false)
+      runtime.setup!(providers: [provider])
       expect(ENV.fetch("AGENT_EVALS_C")).to eq("hooked")
       expect(provider).to have_received(:setup!).with(app_name: "spec")
     end
 
     it "refuses to start without the providers' keys" do
       allow(provider).to receive(:env_keys).and_return(%w[AGENT_EVALS_A])
-      expect { runtime.setup!(providers: [provider], braintrust: false) }.to raise_error(Agent::Evals::Error, /missing AGENT_EVALS_A/)
+      expect { runtime.setup!(providers: [provider]) }.to raise_error(Agent::Evals::Error, /missing AGENT_EVALS_A/)
     end
 
-    it "refuses to log to Braintrust without a key" do
-      allow(ENV).to receive(:[]).and_call_original
-      allow(ENV).to receive(:[]).with("BRAINTRUST_API_KEY").and_return(nil)
-      expect { runtime.setup!(braintrust: true) }.to raise_error(Agent::Evals::Error, /BRAINTRUST_API_KEY/)
-    end
-
-    it "logs in and instruments RubyLLM when it has a key" do
-      allow(ENV).to receive(:[]).and_call_original
-      allow(ENV).to receive(:[]).with("BRAINTRUST_API_KEY").and_return("k")
-      require "braintrust"
-      allow(Braintrust).to receive(:init)
-      allow(Braintrust).to receive(:instrument!)
-      require "ruby_llm"
-      runtime.setup!(braintrust: true)
-      expect(Braintrust).to have_received(:init).with(blocking_login: true, auto_instrument: false)
-      expect(Braintrust).to have_received(:instrument!).with(:ruby_llm)
+    it "checks the chosen tracker's gems and key" do
+      expect { runtime.setup!(tracker: RecordingTracker) }.to raise_error(Agent::Evals::Error, /RECORDING_TRACKER_KEY/)
     end
   end
 

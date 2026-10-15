@@ -7,6 +7,8 @@ gemspec
 # Optional at runtime, present for development: the specs stub both and never
 # reach the network, but the code paths that configure them have to load.
 gem "braintrust", "~> 0.6"
+gem "opentelemetry-exporter-otlp", "~> 0.30"
+gem "opentelemetry-sdk", "~> 1.8"
 gem "ruby_llm", "~> 2.1"
 
 group :development, :test do

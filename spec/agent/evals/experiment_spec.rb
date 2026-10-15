@@ -13,7 +13,6 @@ RSpec.describe Agent::Evals::Experiment do
 
   its(:name) { is_expected.to eq("fake/echo effort=default t=0.2 [colors]") }
   its(:dataset) { is_expected.to eq("colors") }
-  it { is_expected.not_to be_braintrust }
   it { expect { described_class.new(model: model, cases: [], adapter: adapter, scorer: scorer) }.to raise_error(ArgumentError, /at least one case/) }
 
   describe "#run" do
@@ -65,81 +64,30 @@ RSpec.describe Agent::Evals::Experiment do
     end
   end
 
-  context "with a Braintrust project" do
+  context "with trackers" do
     subject(:experiment) do
-      described_class.new(model: model, cases: cases, adapter: adapter, scorer: scorer, project: "p", parallelism: 1, suite: "toy")
+      described_class.new(model: model, cases: cases, adapter: adapter, scorer: scorer, parallelism: 1, trackers: [first, second, off])
     end
 
-    let(:result) do
-      instance_double(Braintrust::Eval::Result, errors: ["one failed"], permalink: "https://bt/exp", scores: {})
-    end
+    let(:first) { RecordingTracker.new(url: "https://first/exp") }
+    let(:second) { RecordingTracker.new(url: nil) }
+    let(:off) { RecordingTracker.new(enabled: false) }
 
-    before do
-      require "braintrust"
-      allow(Braintrust::Eval).to receive(:run) do |**args|
-        args[:cases].each do |kase|
-          output = args[:task].call(input: kase[:input])
-          args[:scorers].each { it.call(expected: kase[:expected], output: output, metadata: kase[:metadata]) }
-          args[:on_progress].call(nil)
-        end
-        result
-      end
-    end
-
-    it { is_expected.to be_braintrust }
-
-    it "runs through Braintrust and keeps its errors and permalink" do
+    it "tells each enabled tracker about the run, in order, and keeps the first URL" do
       summary = experiment.run
-      expect(summary).to have_attributes(errors: ["one failed"], permalink: "https://bt/exp")
-      expect(summary.results.size).to eq(4)
+      expect(first.events.map(&:first)).to eq([:start, :record, :record, :record, :record, :finish])
+      expect(first.events.select { it.first == :record }.map { it.last.case.id }).to eq(%w[clear/001 clear/002 vague/001 vague/002])
+      expect(first.events.last.last).to be_a(described_class::Summary)
+      expect(second.events.map(&:first)).to eq(first.events.map(&:first))
+      expect(off.events).to eq([])
+      expect(summary.permalink).to eq("https://first/exp")
+      expect(experiment.trackers).to eq([first, second])
     end
 
-    it "names, tags and describes the experiment" do
+    it "records a failed case too" do
+      allow(adapter).to receive(:call).and_raise(IOError, "closed")
       experiment.run
-      expect(Braintrust::Eval).to have_received(:run).with(hash_including(
-        project:     "p",
-        project_id:  nil,
-        experiment:  "fake/echo effort=default t=0.2 [colors]",
-        quiet:       true,
-        parallelism: 1,
-        tags:        ["toy", "fake/echo", "dataset-colors"],
-        metadata:    hash_including(model: "fake/echo", dataset: "colors", temperature: 0.2)
-      ))
-    end
-
-    it "gives Braintrust one case per case" do
-      expect(experiment.braintrust_cases.first).to include(
-        input:    { case: "colors/clear/001", text: cases.first.input },
-        expected: cases.first.expected,
-        tags:     %w[variant-clear dataset-colors]
-      )
-    end
-
-    it "returns the output, or _error, from the task" do
-      expect(experiment.task.call(input: { "case" => "colors/clear/002" })).to eq("wall" => "blue", "trim" => "black", "rooms" => 2)
-      expect(experiment.task.call(input: { case: "colors/vague/002" })).to eq("_error" => "reply is not JSON")
-    end
-
-    describe "#scorers" do
-      let(:scorers) { experiment.scorers.to_h { [it.name, it] } }
-
-      before { experiment.task.call(input: { case: "colors/clear/001" }) }
-
-      it { expect(scorers.keys).to eq(%w[field_accuracy exact_match restraint]) }
-
-      it "reads the score the task computed" do
-        expect(scorers["exact_match"].call(metadata: { case: "colors/clear/001" }).first).to include(score: 0.0)
-      end
-
-      it "records nothing for a nil metric" do
-        expect(scorers["restraint"].call(metadata: { "case" => "colors/clear/001" })).to eq([])
-      end
-    end
-
-    it "prefers a project id over the name" do
-      with_id = described_class.new(model: model, cases: cases, adapter: adapter, scorer: scorer, project: "p", project_id: "uuid")
-      with_id.run
-      expect(Braintrust::Eval).to have_received(:run).with(hash_including(project: nil, project_id: "uuid"))
+      expect(first.events.select { it.first == :record }.map(&:last)).to all(be_failed)
     end
   end
 end

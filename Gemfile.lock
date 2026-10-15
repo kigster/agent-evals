@@ -284,6 +284,8 @@ DEPENDENCIES
   aruba (~> 2.4)
   braintrust (~> 0.6)
   bundler-audit (~> 0.9)
+  opentelemetry-exporter-otlp (~> 0.30)
+  opentelemetry-sdk (~> 1.8)
   rake (~> 13.0)
   rspec (~> 3.13)
   rspec-its (~> 2.0)
