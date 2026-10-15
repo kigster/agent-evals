@@ -7,7 +7,7 @@ The gem has a one-way boundary. A consumer suite registers two objects:
 - an **adapter**, which runs one case against a model and returns a `Reply`. It owns everything the model sees and everything done to its answer. It never scores.
 - a **scorer**, which turns a case and a reply into a `Score`. It is pure and deterministic. It never calls anything.
 
-Everything else is the gem's: case discovery, the model lineup (`.agent-eval.config.yml`), providers (OpenRouter through RubyLLM; TypeSafe's catalog), parallel execution, Braintrust experiments, the per-case breakdown, the leaderboard, warnings held back from the screen, and the `agent-evals` command line. Nothing in `lib/` knows what is being evaluated.
+Everything else is the gem's: case discovery, the model lineup (`.agent-eval.config.yml`), providers (OpenRouter through RubyLLM; TypeSafe's catalog), parallel execution, trackers (a local JSON log always; Braintrust or Logfire beside it), the per-case breakdown, the leaderboard, warnings held back from the screen, and the `agent-evals` command line. Nothing in `lib/` knows what is being evaluated.
 
 ## Install
 
@@ -15,7 +15,9 @@ Everything else is the gem's: case discovery, the model lineup (`.agent-eval.con
 # Gemfile
 gem "agent-evals"
 gem "ruby_llm"    # only if a provider needs it (OpenRouter does)
-gem "braintrust"  # only if runs are recorded in Braintrust; --local never loads it
+gem "braintrust"  # only for the braintrust tracker
+gem "opentelemetry-sdk"            # only for the logfire tracker
+gem "opentelemetry-exporter-otlp"
 ```
 
 Ruby 3.4 or later.
@@ -176,7 +178,7 @@ agent-evals cases                              # list the cases, no calls
 agent-evals verify                             # offline checks: inputs, expected.json, adapter, scorer
 agent-evals run -m openai/gpt-4.1-mini         # one model, every dataset, per-case breakdown
 agent-evals run -m anthropic/claude-haiku-5.5 -e low -d vague -c vague/00
-agent-evals run --local -o                     # score without Braintrust; the breakdowns go to log/
+agent-evals run --local -o                     # no remote tracker; the breakdowns go to log/
 agent-evals compare                            # everything the lineup lists, leaderboard only
 agent-evals compare -n                         # show that matrix, call nothing
 agent-evals completion zsh                     # shell completion (bash too)
@@ -191,21 +193,69 @@ agent-evals completion zsh                     # shell completion (bash too)
 | `version`    | The gem version (`-V`, `--version`).                                                                     | no           |
 | `completion` | A bash or zsh completion script.                                                                         | no           |
 
-Flags shared by `run` and `compare`: `-m/--models`, `-d/--dataset` (every dataset when omitted), `-c/--case`, `-e/--effort`, `-t/--temperature`, `--max-tokens`, `-p/--parallelism`, `--config FILE`, `--project NAME`, `--local`, `--no-open`, `-n/--dry-run`, `-o/--output [FILE]`.
+Flags shared by `run` and `compare`: `-m/--models`, `-d/--dataset` (every dataset when omitted), `-c/--case`, `-e/--effort`, `-t/--temperature`, `--max-tokens`, `-p/--parallelism`, `--config FILE`, `--project NAME`, `--tracker NAME`, `--local`, `--no-open`, `-n/--dry-run`, `-o/--output [FILE]`.
 
 Reserved short flags, the same in every CLI of this family: `-n` dry run, `-y` yes, `-o` report file, `-l` log file, `-L` log level. `-n` and `-o` are implemented; `-l` and `-L` are reserved and not taken by anything else.
 
 The leaderboard has one column per metric the scorer declares, ranked by the `primary` one, with a glossary built from each metric's `description`. The best value per dataset is the cheapest experiment within two points of the best primary metric. STDOUT carries the tables; progress bars and warnings go to STDERR, and anything a library would have printed while the bars redraw is saved to `log/<command>.warnings.<stamp>.log` instead.
 
+## Trackers
+
+The gem always owns the run loop. Where results go besides the terminal is a **tracker**: the local JSON log always runs, and at most **one remote tracker** runs beside it, or none.
+
+| Tracker      | Chosen by                                       | Needs                                                                                         | Sends                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------ | ----------------------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| local        | always                                          | nothing                                                                                       | `log/agent-evals/<experiment>.<stamp>.json`: settings, means, errors, usage, and one row per case (score, metrics, outcomes, diagnostics, error, usage).                                                                                                                                                                                                                                                                                                                                                   |
+| `braintrust` | `--tracker braintrust`, or `BRAINTRUST_API_KEY` | the `braintrust` gem; `BRAINTRUST_API_KEY`; optionally `BRAINTRUST_PROJECT_ID` or `--project` | One experiment per run in the project; one eval row per case with input, expected, output (or `_error`), the scorer's metrics as scores, and diagnostics, outcomes and usage as metadata. `finish` returns the experiment page, which opens unless `--no-open`.                                                                                                                                                                                                                                            |
+| `logfire`    | `--tracker logfire`, or `LOGFIRE_TOKEN`         | `opentelemetry-sdk` and `opentelemetry-exporter-otlp`; `LOGFIRE_TOKEN`                        | OTLP traces to `https://logfire-us.pydantic.dev/v1/traces` (per their docs, 2026-10-15; `LOGFIRE_BASE_URL` for another region): one span per experiment (suite, project, model, provider, settings, case count, means on finish) with one child span per case (id, dataset, variant, score, each metric, outcome counts, duration, tokens and cost, diagnostics as JSON cut at 4 KB, exceptions recorded). The raw reply is not sent unless `logfire: { include_replies: true }` is in the config. No URL. |
+
+Selection, in this order: `--tracker NAME` on the command line, then `tracker:` in `.agent-eval.config.yml`, then the environment, where exactly one tracker's key being set selects it. Two keys set and nothing chosen is an error asking for `--tracker` or `tracker:`; `--local` (or `--tracker none`) means no remote tracker. A chosen tracker whose gem or key is missing fails before any model is called, naming both. `-v` prints which tracker was chosen and why.
+
+Logfire has no Ruby gem of its own: it is an OTLP backend for the standard OpenTelemetry Ruby SDK, so the tracker builds its own tracer provider and exporter and leaves the global one alone. When `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_HEADERS` is already set, those win over `LOGFIRE_TOKEN`, and `-v` says so. Traces only; Logfire's metrics and logs SDKs are pre-1.0.
+
+### Writing a tracker
+
+A tracker is a class with three callbacks. Register it with `c.tracker` in the helper (or name it in a plugin gem's `require:`), and choose it by name:
+
+```ruby
+class Weave < Agent::Evals::Tracker
+  def self.env_key = "WANDB_API_KEY"                 # selects it when set and nothing else is chosen
+  def self.gems = ["wandb"]                          # lazily required; named in the error when missing
+
+  def start(experiment)                              # once, before the first case
+    @run = Wandb.init(project: context[:project], name: experiment.name,
+      config: { model: experiment.model.id, **experiment.model.settings })
+  end
+
+  def record(result)                                 # once per finished case, in order, under a lock
+    @run.log("case" => result.case.key, "score" => result.score&.value, **(result.score&.metrics || {}),
+      "error" => result.error, "cost_usd" => result.reply&.usage&.cost_usd)
+  end
+
+  def finish(experiment, summary)                    # once, with the summary
+    @run.summary.update(summary.means)
+    @run.finish
+    { url: @run.url }                                # or { url: nil } when there is no page to open
+  end
+end
+
+Agent::Evals.configure { |c| c.tracker Weave }
+```
+
+`context` holds `suite:`, `project:`, `project_id:` and `options:` (the tracker's own section of the config file, e.g. `weave: { entity: "team" }`). Return `false` from `enabled?` to turn every callback into a no-op. A tracker for another OTLP backend is a subclass of `Trackers::Logfire` with different credentials.
+
 ## Environment
 
-| Variable                | Needed when                                                                                                           |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `OPENROUTER_API_KEY`    | any contender is served by OpenRouter (the default provider)                                                          |
-| `TYPESAFE_API_KEY`      | a `direct: typesafe:` contender runs                                                                                  |
-| `BRAINTRUST_API_KEY`    | a run is recorded in Braintrust (anything without `--local`)                                                          |
-| `BRAINTRUST_PROJECT_ID` | optional; the project UUID, beating the lineup's `project`                                                            |
-| `AGENT_EVALS_HELPER`    | optional; the helper to load instead of searching upward for `evals/eval_helper.rb` or `evals/.agent-eval.config.yml` |
+| Variable                                                    | Needed when                                                                                                           |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `OPENROUTER_API_KEY`                                        | any contender is served by OpenRouter (the default provider)                                                          |
+| `TYPESAFE_API_KEY`                                          | a `direct: typesafe:` contender runs                                                                                  |
+| `BRAINTRUST_API_KEY`                                        | optional; selects the braintrust tracker when nothing else is chosen, and is required by it                           |
+| `BRAINTRUST_PROJECT_ID`                                     | optional; the Braintrust project UUID, beating the lineup's `project`                                                 |
+| `LOGFIRE_TOKEN`                                             | optional; selects the logfire tracker when nothing else is chosen, and is required by it (a write token)              |
+| `LOGFIRE_BASE_URL`                                          | optional; Logfire's region, default `https://logfire-us.pydantic.dev`                                                 |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` | optional; when set, the logfire tracker uses them instead of `LOGFIRE_TOKEN`                                          |
+| `AGENT_EVALS_HELPER`                                        | optional; the helper to load instead of searching upward for `evals/eval_helper.rb` or `evals/.agent-eval.config.yml` |
 
 The suite's `env_files` load first, without overriding what is already exported. A missing key fails the run before any model is called, naming the variable.
 
@@ -258,7 +308,9 @@ module Agent::Evals
   class Adapter; def prepare(dataset); def call(kase, model:); def context(kase); def verify(dataset); def metadata; end
   class Scorer;  def metrics; def call(kase, reply, context:); def verify(kase, context:); def summary(kase); end
   class SchemaValidator  # { name => { type:, enum:, nullable: } }; boolean integer number string enum multi_enum
-  class Experiment       # one model over one dataset; local, or a Braintrust experiment when a project is given
+  class Experiment       # one model over one dataset, on the gem's own thread pool; trackers watch
+  class Tracker          # start(experiment), record(run_result), finish(experiment, summary) -> { url: }
+  module Trackers        # Local (always), Braintrust, Logfire (OTLP), Registry (choose)
   class Discovery, Config, Configuration, Runtime, Verify, Warnings, Launcher
   Config#request_types   # required in .agent-eval.config.yml; Config::REQUEST_TYPES = %w[prompt typesafe]
   module Providers       # Base (request_type, direct?), Registry (for, direct, admit), OpenRouter, TypeSafe, Catalog
@@ -275,7 +327,7 @@ just toy         # agent-evals cases && agent-evals verify, in spec/fixtures/toy
 lefthook install # the pre-commit hooks
 ```
 
-Specs build real directories under `Dir.mktmpdir` and never reach the network; `RubyLLM`, `Braintrust::Eval` and `Net::HTTP` are stubbed where a provider is exercised.
+Specs build real directories under `Dir.mktmpdir` and never reach the network; `RubyLLM`, the Braintrust API classes and `Net::HTTP` are stubbed, and the trackers are asserted through OpenTelemetry's in-memory span exporter.
 
 ## License
 
