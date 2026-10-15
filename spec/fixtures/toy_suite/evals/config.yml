@@ -1,0 +1,12 @@
+# The toy suite's lineup: fake models only, so nothing here can call a network.
+project: toy-suite
+defaults:
+  effort: default
+  temperature: 0.2
+  max_tokens: 256
+  parallelism: 2
+vendors:
+  fake:
+    - model: echo
+      effort: [default, low]
+    - model: parrot
