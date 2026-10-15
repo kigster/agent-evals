@@ -11,7 +11,7 @@ module Agent
         option :concurrency, default: "0", desc: "Models running at once; 0 runs them all together"
 
         example [
-          "                                     # everything config.yml lists",
+          "                                     # everything .agent-eval.config.yml lists",
           "-m anthropic/claude-haiku-5.5,openai/gpt-4o-mini -t 0",
           "-e low -c clear --concurrency 2",
           "-n                                   # show the matrix, spend nothing"

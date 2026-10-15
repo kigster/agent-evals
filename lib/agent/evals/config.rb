@@ -4,9 +4,11 @@ require "yaml"
 
 module Agent
   module Evals
-    # The suite's config.yml: which models to compare, and at which settings.
+    # The suite's `.agent-eval.config.yml`: which models to compare, at which
+    # settings, and which kinds of request the suite can produce.
     #
     #   project: my-evals            # Braintrust project name
+    #   request_types: [prompt]      # required: what the adapter sends; a provider must match
     #   defaults:
     #     effort: default
     #     temperature: 0.2
@@ -19,6 +21,11 @@ module Agent
     #
     # Each entry becomes "<vendor>/<model>", the id a provider recognises.
     class Config
+      # The request types a suite may declare. `prompt` is a chat completion:
+      # system and user text in, text out. `typesafe` is TypeSafe's typed
+      # question API, whose request shape the first such suite will define.
+      REQUEST_TYPES = %w[prompt typesafe].freeze
+
       BUILTIN = {
         "effort" => "default", "temperature" => 0.2, "max_tokens" => 4096, "parallelism" => 4
       }.freeze
@@ -33,6 +40,23 @@ module Agent
 
       # @return [String, nil] the Braintrust project name
       def project = @data["project"]
+
+      # The kinds of request the suite's adapter produces. A provider whose
+      # request type is not listed cannot serve this suite, whatever model it
+      # names, so the list is required: without it every contender would be
+      # admitted on faith and fail at the first call.
+      #
+      # @return [Array<Symbol>]
+      # @raise [Error] when the key is missing, empty, or names an unknown type
+      def request_types
+        listed = Array(@data["request_types"]).map(&:to_s)
+        raise Error, "#{path}: request_types is required; list one or more of #{REQUEST_TYPES.join(", ")}" if listed.empty?
+
+        unknown = listed - REQUEST_TYPES
+        raise Error, "#{path}: unknown request_types #{unknown.join(", ")}; known: #{REQUEST_TYPES.join(", ")}" if unknown.any?
+
+        listed.map(&:to_sym)
+      end
 
       # @return [Hash{String => Object}] the built-in defaults under the file's own
       def defaults = BUILTIN.merge(@data.fetch("defaults", nil) || {})

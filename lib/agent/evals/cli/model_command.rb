@@ -7,7 +7,7 @@ module Agent
   module Evals
     module CLI
       # The options shared by the commands that call a model. Settings resolve
-      # flag first, then the config entry, then config.yml's defaults.
+      # flag first, then the config entry, then .agent-eval.config.yml's defaults.
       #
       # Every column that is not a metric is the gem's; the metric columns,
       # their glossary and the ranking come from the suite's {Scorer#metrics}.
@@ -41,24 +41,24 @@ module Agent
             type:    :array,
             aliases: ["-m"],
             default: [],
-            desc:    "Model ids, comma-separated, instead of config.yml's vendors"
+            desc:    "Model ids, comma-separated, instead of the config file's vendors"
           subclass.option :dataset,
             type:    :array,
             aliases: ["-d"],
             default: [],
             desc:    "Datasets, comma-separated; every dataset when omitted. Each model runs on each"
-          subclass.option :config, desc: "The lineup file (default: the suite's config.yml)"
-          subclass.option :effort, aliases: ["-e"], desc: "Reasoning effort: default, or one the provider accepts (overrides config.yml)"
-          subclass.option :temperature, aliases: ["-t"], desc: "Sampling temperature, or 'default' to send none (overrides config.yml)"
-          subclass.option :max_tokens, desc: "Output token cap, reasoning included (overrides config.yml)"
+          subclass.option :config, desc: "The lineup file (default: the suite's .agent-eval..agent-eval.config.yml)"
+          subclass.option :effort, aliases: ["-e"], desc: "Reasoning effort: default, or one the provider accepts (overrides the config file)"
+          subclass.option :temperature, aliases: ["-t"], desc: "Sampling temperature, or 'default' to send none (overrides the config file)"
+          subclass.option :max_tokens, desc: "Output token cap, reasoning included (overrides the config file)"
           subclass.option :case,
             type:    :array,
             aliases: ["-c"],
             default: [],
             desc:    "Only these cases, by id prefix: -c clear or -c clear/003,vague/001"
-          subclass.option :parallelism, aliases: ["-p"], desc: "Cases in flight at once, per model (overrides config.yml)"
+          subclass.option :parallelism, aliases: ["-p"], desc: "Cases in flight at once, per model (default: the config's defaults.parallelism)"
           subclass.option :project,
-            desc: "Braintrust project name; default is the BRAINTRUST_PROJECT_ID project, else config.yml's project"
+            desc: "Braintrust project name; default is the BRAINTRUST_PROJECT_ID project, else the config file's project"
           subclass.option :open,
             type:    :boolean,
             default: true,
@@ -102,7 +102,7 @@ module Agent
         end
 
         # The contenders a command runs: the models named on the command line,
-        # or every model config.yml lists.
+        # or every model .agent-eval.config.yml lists.
         #
         # @param models [Array<String>] as given to -m, possibly comma-separated
         # @return [Array<Contender>]
@@ -112,7 +112,22 @@ module Agent
           found = models.empty? ? config.contenders(overrides(options)) : config.contenders_for(models, overrides(options))
           raise Error, "no models: list some under vendors in #{config.path}, or pass -m" if found.empty?
 
+          admit(found, config)
+        end
+
+        # Keeps the contenders whose provider produces what the suite declares
+        # in `request_types`, and records each refusal in {#warnings} by name,
+        # so a refused model is reported rather than run, failed and billed.
+        #
+        # @return [Array<Contender>] the admitted contenders
+        # @raise [Error] when none is admitted, naming every refusal
+        def admit(found, config)
           found.each { providers.for(it.model) } # an unserved id fails here, before anything is spent
+          admitted, refusals = providers.admit(found, request_types: config.request_types)
+          refusals.each { warnings.record(it.to_s) }
+          raise Error, "no admitted models: #{refusals.join("; ")}" if admitted.empty?
+
+          admitted
         end
 
         # Env, hooks, provider clients, Braintrust, then the catalogs.
@@ -121,10 +136,12 @@ module Agent
           providers.verify!(contenders)
         end
 
-        # What -n prints: every experiment that would run.
+        # What -n prints: every experiment that would run, and where the
+        # refusals went, if there were any.
         def matrix(datasets, contenders)
           rows = datasets.product(contenders).map { |name, c| [name, c.model, c.effort, c.temperature, c.max_tokens] }
           table(rows, header: %w[dataset model effort temp max_tokens])
+          save_warnings
         end
 
         # Runs the experiments side by side, a progress bar each. What would

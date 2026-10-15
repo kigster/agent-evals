@@ -6,7 +6,7 @@ RSpec.describe Agent::Evals::Configuration do
   its(:name) { is_expected.to eq("agent-evals") }
   its(:cases_glob) { is_expected.to eq(described_class::DEFAULT_GLOB) }
   it { is_expected.not_to be_complete }
-  it { expect(configuration.config).to eq(File.join(Dir.pwd, "config.yml")) }
+  it { expect(configuration.config).to eq(File.join(Dir.pwd, ".agent-eval.config.yml")) }
   it { expect(configuration.providers.map(&:name)).to eq(%w[typesafe openrouter]) }
 
   it "refuses to serve a command without a suite" do
@@ -26,7 +26,7 @@ RSpec.describe Agent::Evals::Configuration do
       configuration.scorer scorer
       configuration.before_run(&hook)
       configuration.provider provider
-      configuration.config "evals/config.yml"
+      configuration.config "evals/.agent-eval.config.yml"
       configuration.project "proj"
     end
 
@@ -37,7 +37,7 @@ RSpec.describe Agent::Evals::Configuration do
     its(:description) { is_expected.to eq("desc") }
     its(:hooks) { is_expected.to eq([hook]) }
     it { expect(configuration.project).to eq("proj") }
-    it { expect(configuration.config).to eq(File.join(TOY_SUITE, "evals", "config.yml")) }
+    it { expect(configuration.config).to eq(File.join(TOY_SUITE, "evals", ".agent-eval.config.yml")) }
     it { expect(configuration.lineup.project).to eq("toy-suite") }
     it { expect(configuration.discovery.datasets).to eq(%w[animals colors]) }
     it { expect(configuration.providers.for("fake/x")).to be(provider) }

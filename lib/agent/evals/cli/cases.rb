@@ -19,9 +19,18 @@ module Agent
           raise Error, "no cases found under #{discovery.root} with #{discovery.glob}" if rows.empty?
 
           table(rows, header: %w[dataset case difficulty expected words])
+          refusals
         end
 
         private
+
+        # Names, on STDERR, every lineup entry the suite cannot ask, so the
+        # mismatch is visible before anyone reaches for `run`.
+        def refusals
+          config = configuration.lineup
+          _, refused = configuration.providers.admit(config.contenders, request_types: config.request_types)
+          refused.map(&:to_s).uniq.each { status_box :warning, it, stream: err }
+        end
 
         # The generic cell when the scorer has nothing to say: how many fields
         # the expected answer holds, or what kind of thing it is.

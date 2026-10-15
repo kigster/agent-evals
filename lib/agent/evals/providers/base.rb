@@ -12,6 +12,14 @@ module Agent
         # The reasoning efforts this provider's API accepts.
         EFFORTS = %w[none minimal low medium high xhigh max].freeze
 
+        # The kind of request this provider answers; see {Config::REQUEST_TYPES}.
+        # A suite admits a provider only when its config lists this type.
+        #
+        # @return [Symbol]
+        def request_type
+          raise NotImplementedError, "#{self.class}#request_type must be one of #{Config::REQUEST_TYPES.join(", ")}"
+        end
+
         # @return [String] short name, for messages and the leaderboard
         def name = self.class.name.split("::").last.gsub(/([a-z\d])([A-Z])/, '\1-\2').downcase
 

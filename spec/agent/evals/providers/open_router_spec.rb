@@ -18,6 +18,8 @@ RSpec.describe Agent::Evals::Providers::OpenRouter do
   end
 
   its(:name) { is_expected.to eq("openrouter") }
+  its(:request_type) { is_expected.to eq(:prompt) }
+  it("serves Jev on OpenRouter as a chat model") { expect(provider).to be_serves("typesafe/jev-router") }
   its(:env_keys) { is_expected.to eq(["OPENROUTER_API_KEY"]) }
   its(:prefix) { is_expected.to eq("") }
   it { expect(provider.model_name("acme/m1")).to eq("acme/m1") }

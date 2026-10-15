@@ -41,6 +41,15 @@ RSpec.describe Agent::Evals::Launcher do
     it { expect(run_cli).to include("colors", "vague/002", "1/3 answered", "animals") }
   end
 
+  context "with cases and a refused lineup entry" do
+    let(:argv) { ["cases"] }
+
+    it "names it on stderr" do
+      run_cli
+      expect(stderr.string).to include("typesafe-api/jev-latest refused: needs typesafe; this suite produces prompt")
+    end
+  end
+
   context "with cases of one dataset" do
     let(:argv) { %w[cases -d colors] }
 
@@ -75,11 +84,60 @@ RSpec.describe Agent::Evals::Launcher do
 
   context "with run --dry-run" do
     let(:argv) { %w[run -n] }
+    let(:log) { Dir.mktmpdir }
+
+    before { allow(Dry::CLI::UI::Invocation).to receive(:root).and_return(log) }
+
+    after { FileUtils.remove_entry(log) }
 
     it "prints the matrix and calls nothing" do
       expect(run_cli).to include("max_tokens", "fake/parrot", "animals", "colors")
       expect(runtime).not_to have_received(:setup!)
     end
+
+    it "leaves the refused contender out of the matrix and names it in the warnings" do
+      expect(run_cli).not_to include("typesafe-api/jev-latest")
+      expect(stderr.string.delete("│\n ")).to include('1Warningwasrecordedin')
+      expect(File.read(Dir[File.join(log, "log", "*.warnings.*")].first))
+        .to eq("typesafe-api/jev-latest refused: needs typesafe; this suite produces prompt\n")
+    end
+  end
+
+  context "with run on a refused model alone" do
+    let(:argv) { %w[run -m typesafe-api/jev-latest --local] }
+
+    it "stops with the refusal, before anything is set up" do
+      run_cli
+      expect(stderr.string).to include("no admitted models: typesafe-api/jev-latest refused: needs typesafe; this suite produces prompt")
+      expect(runtime).not_to have_received(:setup!)
+      expect(kernel).to have_received(:exit).with(1)
+    end
+  end
+
+  context "with run on a refused model and an admitted one" do
+    let(:argv) { %w[run -m fake/one,typesafe-api/jev-latest -d colors -c clear/001 --local] }
+    let(:log) { Dir.mktmpdir }
+
+    before { allow(Dry::CLI::UI::Invocation).to receive(:root).and_return(log) }
+
+    after { FileUtils.remove_entry(log) }
+
+    it "runs the admitted one and records the refusal" do
+      expect(run_cli).to include("fake/one").and(satisfy { !it.include?("typesafe-api") })
+      expect(File.read(Dir[File.join(log, "log", "*.warnings.*")].first)).to include("typesafe-api/jev-latest refused")
+    end
+  end
+
+  context "with run and a lineup without request_types" do
+    let(:dir) { Dir.mktmpdir }
+    let(:path) { File.join(dir, "lineup.yml") }
+    let(:argv) { ["run", "--local", "-n", "--config", path] }
+
+    before { File.write(path, "vendors:\n  fake:\n    - model: other\n") }
+
+    after { FileUtils.remove_entry(dir) }
+
+    it { run_cli && expect(stderr.string).to(include("#{path}: request_types is required")) }
   end
 
   context "with run on one dataset" do
@@ -190,7 +248,7 @@ RSpec.describe Agent::Evals::Launcher do
   context "with run and no model" do
     let(:argv) { %w[run -d colors -c clear --local] }
 
-    it "runs every model in config.yml, each with its breakdown" do
+    it "runs every model in .agent-eval.config.yml, each with its breakdown" do
       expect(run_cli).to include("fake/echo effort=low t=0.2 [colors]", "fake/parrot effort=default t=0.2 [colors]", "clear/002")
     end
   end
@@ -224,7 +282,7 @@ RSpec.describe Agent::Evals::Launcher do
     after { FileUtils.remove_entry(dir) }
 
     it "reads it" do
-      File.write(File.join(dir, "lineup.yml"), "vendors:\n  fake:\n    - model: other\n")
+      File.write(File.join(dir, "lineup.yml"), "request_types: [prompt]\nvendors:\n  fake:\n    - model: other\n")
       expect(run_cli).to include("fake/other")
     end
 

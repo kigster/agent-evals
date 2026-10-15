@@ -5,6 +5,7 @@ RSpec.describe Agent::Evals::Providers::Base do
 
   its(:name) { is_expected.to eq("base") }
   its(:catalog) { is_expected.to be_nil }
+  it { expect { provider.request_type }.to raise_error(NotImplementedError, /prompt, typesafe/) }
   it { expect(provider.setup!(app_name: "x")).to be_nil }
   it { expect(provider.unknown(%w[a b])).to eq([]) }
 

@@ -46,6 +46,28 @@ module Agent
         # @return [Model]
         def model_for(contender) = self.for(contender.model).model_for(contender)
 
+        # One refused contender: who, and why.
+        Refusal = Data.define(:contender, :reason) do
+          def to_s = "#{contender.model} refused: #{reason}"
+        end
+
+        # Splits the contenders into those whose provider produces a request
+        # type the suite declares and those it does not. A refused contender
+        # is named, never run, and never scored 0: a model the suite cannot
+        # even ask is not a model that answered wrongly.
+        #
+        # @param contenders [Array<Contender>]
+        # @param request_types [Array<Symbol>] what the suite's config declares
+        # @return [Array(Array<Contender>, Array<Refusal>)] admitted, refused
+        def admit(contenders, request_types:)
+          admitted, refused = contenders.partition { request_types.include?(self.for(it.model).request_type) }
+          refusals = refused.map do |contender|
+            needs = self.for(contender.model).request_type
+            Refusal.new(contender: contender, reason: "needs #{needs}; this suite produces #{request_types.join(", ")}")
+          end
+          [admitted, refusals]
+        end
+
         # @return [Array<String>] every effort any provider accepts, for the flag's help
         def efforts = flat_map(&:efforts).uniq
 
@@ -61,7 +83,7 @@ module Agent
 
           raise Error,
             "unknown model#{"s" if unknown.size > 1} #{unknown.join(", ")}: not listed by its provider; " \
-            "check the id in config.yml or -m"
+            "check the id in .agent-eval.config.yml or -m"
         end
       end
     end

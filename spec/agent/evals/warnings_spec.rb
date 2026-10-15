@@ -12,8 +12,8 @@ RSpec.describe Agent::Evals::Warnings do
     expect(warnings.write("ab", "c")).to eq(3)
     warnings.print("d")
     warnings << "e"
-    expect([warnings.flush, warnings.sync, warnings.close, warnings.tty?, warnings.count]).to eq([warnings, true, nil, false, 4])
     warnings.sync = false
+    expect([warnings.flush, warnings.sync, warnings.close, warnings.tty?, warnings.count]).to eq([warnings, true, nil, false, 4])
   end
 
   describe "#capture" do

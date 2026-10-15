@@ -4,10 +4,10 @@ module Agent
   module Evals
     module CLI
       # One experiment per model and dataset, each with a per-case breakdown.
-      # Without -m, every model config.yml lists. {Compare} runs the same
+      # Without -m, every model .agent-eval.config.yml lists. {Compare} runs the same
       # experiments and prints only the leaderboard.
       class Run < ModelCommand
-        desc "Run every case against a model, or every model in config.yml, with a per-case breakdown"
+        desc "Run every case against a model, or every model in .agent-eval.config.yml, with a per-case breakdown"
 
         example [
           "-m anthropic/claude-haiku-5.5",

@@ -45,11 +45,30 @@ RSpec.describe Agent::Evals::Config do
   context "without a file" do
     its(:contenders) { is_expected.to eq([]) }
     its(:project) { is_expected.to be_nil }
+    it { expect { config.request_types }.to raise_error(Agent::Evals::Error, /#{Regexp.escape(path)}: request_types is required; list one or more of prompt, typesafe/) }
   end
 
-  context "with the toy suite's config.yml" do
+  describe "#request_types" do
+    it "reads the declared types as symbols" do
+      File.write(path, "request_types: [prompt, typesafe]\n")
+      expect(config.request_types).to eq(%i[prompt typesafe])
+    end
+
+    it "refuses an empty list, naming the file" do
+      File.write(path, "request_types: []\n")
+      expect { config.request_types }.to raise_error(Agent::Evals::Error, /#{Regexp.escape(path)}: request_types is required/)
+    end
+
+    it "refuses an unknown type, naming the file" do
+      File.write(path, "request_types: [prompt, telepathy]\n")
+      expect { config.request_types }.to raise_error(Agent::Evals::Error, /#{Regexp.escape(path)}: unknown request_types telepathy; known: prompt, typesafe/)
+    end
+  end
+
+  context "with the toy suite's lineup" do
     subject(:config) { Agent::Evals.configuration.lineup }
 
-    it { expect(config.contenders.map(&:model)).to eq(%w[fake/echo fake/echo fake/parrot]) }
+    it { expect(config.contenders.map(&:model)).to eq(%w[fake/echo fake/echo fake/parrot typesafe-api/jev-latest]) }
+    it { expect(config.request_types).to eq([:prompt]) }
   end
 end

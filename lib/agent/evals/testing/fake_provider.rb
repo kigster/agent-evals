@@ -32,6 +32,7 @@ module Agent
         end
 
         def name = "fake"
+        def request_type = :prompt
         def prefix = PREFIX
         def env_keys = []
 

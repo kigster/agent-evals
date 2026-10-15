@@ -14,6 +14,7 @@ module Agent
         EFFORTS = %w[none minimal low medium high xhigh max].freeze
 
         def name = "openrouter"
+        def request_type = :prompt
         def env_keys = [KEY]
         def efforts = EFFORTS
 

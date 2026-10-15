@@ -4,6 +4,7 @@ RSpec.describe Agent::Evals::Providers::TypeSafe do
   subject(:provider) { described_class.new }
 
   its(:name) { is_expected.to eq("typesafe") }
+  its(:request_type) { is_expected.to eq(:typesafe) }
   its(:efforts) { is_expected.to eq([]) }
   its(:env_keys) { is_expected.to eq(["TYPESAFE_API_KEY"]) }
   it { expect(provider).to be_serves("typesafe-api/jev-latest") }
@@ -19,6 +20,6 @@ RSpec.describe Agent::Evals::Providers::TypeSafe do
 
   it "refuses to chat" do
     model = provider.model_for(Agent::Evals::Contender.new(model: "typesafe-api/jev-latest", effort: nil, temperature: nil, max_tokens: nil))
-    expect { model.complete(user: "x") }.to raise_error(Agent::Evals::Error, /typed questions, not chat/)
+    expect { model.complete(user: "x") }.to raise_error(Agent::Evals::Error, /no typesafe consumer yet; the typed request shape is defined by the first suite that declares request_types: \[typesafe\]/)
   end
 end

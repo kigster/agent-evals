@@ -6,7 +6,7 @@ module Agent
     # Paths are relative to `root`, the directory the eval helper lives in.
     class Configuration
       DEFAULT_GLOB = "datasets/*/cases/**/input.txt"
-      DEFAULT_CONFIG = "config.yml"
+      DEFAULT_CONFIG = ".agent-eval.config.yml"
 
       attr_writer :adapter, :scorer
       attr_reader :name, :root, :env_files, :cases_glob, :hooks, :providers, :description
@@ -26,7 +26,7 @@ module Agent
       # Names the suite. The name titles the help and tags the experiments.
       #
       # @param name [String]
-      # @param root [String] where config.yml and datasets/ live; the helper's directory
+      # @param root [String] where .agent-eval.config.yml and datasets/ live; the helper's directory
       # @param env_files [Array<String>] dotenv files to load, relative to root; the first that exists wins nothing,
       #   all that exist load, and an exported variable beats them all
       # @param description [String, nil] one line for the help's header
@@ -86,14 +86,14 @@ module Agent
       end
 
       # @param path [String, nil] setting, relative to root; reading when nil
-      # @return [String] the absolute path of the lineup file
+      # @return [String] the absolute path of the lineup file, `.agent-eval.config.yml` at the root by default
       def config(path = nil)
         @config_path = path unless path.nil?
         File.expand_path(@config_path, root)
       end
 
       # @param name [String, nil] setting; reading when nil
-      # @return [String, nil] the Braintrust project, when config.yml does not name one
+      # @return [String, nil] the Braintrust project, when .agent-eval.config.yml does not name one
       def project(name = nil)
         @project = name unless name.nil?
         @project

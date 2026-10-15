@@ -14,6 +14,7 @@ RSpec.describe Agent::Evals::Testing::FakeProvider do
   it { expect(model.complete(user: "never seen").text).to eq("{}") }
   it { expect(model.complete(user: "x").usage).to eq(described_class::USAGE) }
   it { expect(provider.unknown(["fake/anything"])).to eq([]) }
+  it { expect(provider.request_type).to eq(:prompt) }
 
   it "records its calls" do
     model.complete(system: "s", user: "u", json: false)

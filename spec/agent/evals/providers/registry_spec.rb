@@ -34,6 +34,27 @@ RSpec.describe Agent::Evals::Providers::Registry do
     expect(registry.model_for(contender("fake/x"))).to have_attributes(id: "fake/x", provider: fake, temperature: 0.1)
   end
 
+  describe "#admit" do
+    let(:contenders) { [contender("acme/x"), contender("typesafe-api/jev-latest"), contender("typesafe/jev-router")] }
+
+    it "admits the providers whose request type the suite declares, and refuses the rest by name" do
+      admitted, refused = registry.admit(contenders, request_types: [:prompt])
+      expect(admitted.map(&:model)).to eq(%w[acme/x typesafe/jev-router])
+      expect(refused.map(&:to_s)).to eq(["typesafe-api/jev-latest refused: needs typesafe; this suite produces prompt"])
+    end
+
+    it "admits everything a suite declaring both can ask" do
+      admitted, refused = registry.admit(contenders, request_types: %i[prompt typesafe])
+      expect([admitted.size, refused]).to eq([3, []])
+    end
+
+    it "refuses everything when the suite declares only typesafe" do
+      admitted, refused = registry.admit(contenders, request_types: [:typesafe])
+      expect(admitted.map(&:model)).to eq(["typesafe-api/jev-latest"])
+      expect(refused.map { it.contender.model }).to eq(%w[acme/x typesafe/jev-router])
+    end
+  end
+
   describe "#verify!" do
     before do
       allow(Agent::Evals::Providers::Catalog).to receive(:fetch).with(Agent::Evals::Providers::OpenRouter::URL)
