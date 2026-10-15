@@ -1,0 +1,57 @@
+version: 2.1
+
+executors:
+  # Pure-Ruby gem: no database, no browser, no native extensions.
+  ruby:
+    docker:
+      - image: cimg/ruby:4.0.6
+    working_directory: ~/agent-evals
+
+commands:
+  sources:
+    description: "Check out and install gems against the image's Ruby"
+    steps:
+      - checkout
+      - run:
+          # .ruby-version pins 4.1.0-preview1, which has no cimg image yet.
+          name: Switch Ruby version
+          command: echo '4.0.6' > .ruby-version
+      - run:
+          name: Install gems
+          command: |
+            bundle update --bundler
+            bundle install -j 4
+
+jobs:
+  scan_ruby:
+    executor: ruby
+    steps:
+      - sources
+      - run:
+          name: Scan Ruby dependencies for known CVEs
+          command: |
+            bundle exec bundle-audit update --quiet
+            bundle exec bundle-audit check
+
+  rubocop:
+    executor: ruby
+    steps:
+      - sources
+      - run:
+          name: Lint code for consistent style
+          command: bundle exec rubocop
+
+  test:
+    executor: ruby
+    steps:
+      - sources
+      - run:
+          name: Run tests
+          command: bundle exec rspec
+
+workflows:
+  ci:
+    jobs:
+      - scan_ruby
+      - rubocop
+      - test

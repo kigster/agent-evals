@@ -12,7 +12,6 @@ AllCops:
   Include:
     - '**/*.rb'
     - Gemfile
-    - justfile.rb
     - '*.gemspec'
   Exclude:
     - vendor/**/*
