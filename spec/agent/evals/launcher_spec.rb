@@ -20,7 +20,7 @@ RSpec.describe Agent::Evals::Launcher do
     let(:argv) { [] }
 
     it("prints help, titled after the suite") { expect(run_cli).to include("compare", "agent-evals (toy)", "The toy suite") }
-    it("lists the request types the providers own") { expect(run_cli).to include("typesafe (typed questions: noul, choice, score)") }
+    it("lists the request types the providers own") { expect(run_cli.gsub(/\s+/, " ")).to include("typesafe (typed questions: noul, choice, score)") }
     it("exits 0") { run_cli && expect(kernel).to(have_received(:exit).with(0)) }
   end
 
