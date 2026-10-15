@@ -6,7 +6,7 @@ First release, extracted from the `extract-eval` suite of inquirex-llm and made 
 
 - Two contracts a suite implements: `Adapter` (runs one case against a `Model`, returns a `Reply`, never scores) and `Scorer` (returns a `Score` with `Metric`s and per-field diagnostics, never calls anything).
 - Value objects: `Case`, `Usage`, `Completion`, `Reply`, `Metric`, `Score`, `RunResult`, `Contender`.
-- `Agent::Evals.configure` and `evals/eval_helper.rb`, found upward from the working directory (`--helper`, `AGENT_EVALS_HELPER`).
+- `Agent::Evals.configure` and `evals/eval_helper.rb`, found upward from the working directory (`--helper`, `AGENT_EVALS_HELPER`); or a config-only suite whose `.agent-eval.config.yml` names `require:`, `adapter:` and `scorer:`, the helper winning where both exist.
 - `Discovery` of `datasets/<dataset>/cases/<variant>/[NNN/]input.txt` with `expected.json` beside; any layout through the glob.
 - `Config`: the `.agent-eval.config.yml` lineup with effort and temperature lists expanded into contenders, and the required `request_types` list, and a `direct:` section for a vendor's own API (`typesafe`), keyed by provider name; a provider declares its `request_type` and a contender is admitted only when the suite declares it, else refused by name in the warnings.
 - Providers: a registry asked last-registered first; `OpenRouter` through RubyLLM; `TypeSafe` as catalog, key and pricing with a transport stub; `Catalog` for model lists.

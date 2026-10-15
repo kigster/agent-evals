@@ -78,6 +78,28 @@ end
 
 A complete, runnable suite lives in [`spec/fixtures/toy_suite/evals/`](spec/fixtures/toy_suite/evals/): two datasets, two variants, the gem's own `Testing::EchoAdapter` and a fake provider, so it runs without a network.
 
+### A config-only suite
+
+A suite needs no `eval_helper.rb` when its Ruby lives in its own gem. Three optional keys in `.agent-eval.config.yml` name it:
+
+```yaml
+# evals/.agent-eval.config.yml
+require: my_gem/evals              # a require path, or a list; loaded through the bundle's load path
+adapter: MyGem::Evals::Adapter     # constant names, instantiated with no arguments
+scorer: MyGem::Evals::Scorer
+```
+
+The executable then finds `evals/.agent-eval.config.yml` upward from the working directory, roots the suite at `evals/`, requires what `require:` names and instantiates the two constants. `evals/` holds only the file and `datasets/`:
+
+```text
+lib/my_gem/evals/adapter.rb         # the Ruby, in the gem
+lib/my_gem/evals/scorer.rb
+evals/.agent-eval.config.yml        # the lineup, plus require/adapter/scorer
+evals/datasets/...
+```
+
+When `evals/eval_helper.rb` exists it is loaded first and may register either object in code; the config keys fill whatever the helper left unset. Neither supplying an adapter and a scorer is a configuration error naming the file and the keys; a `require:` that fails or a constant that does not exist is an error naming the key and the value, not a bare `LoadError` or `NameError`. The required file may itself call `Agent::Evals.configure`, for instance to register a provider. [`spec/fixtures/config_only_suite/`](spec/fixtures/config_only_suite/) is the toy suite in this form.
+
 ### Cases on disk
 
 ```text
@@ -177,13 +199,13 @@ The leaderboard has one column per metric the scorer declares, ranked by the `pr
 
 ## Environment
 
-| Variable                | Needed when                                                  |
-| ----------------------- | ------------------------------------------------------------ |
-| `OPENROUTER_API_KEY`    | any contender is served by OpenRouter (the default provider) |
-| `TYPESAFE_API_KEY`      | a `direct: typesafe:` contender runs                         |
-| `BRAINTRUST_API_KEY`    | a run is recorded in Braintrust (anything without `--local`) |
-| `BRAINTRUST_PROJECT_ID` | optional; the project UUID, beating the lineup's `project`   |
-| `AGENT_EVALS_HELPER`    | optional; the helper to load instead of searching upward     |
+| Variable                | Needed when                                                                                                           |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `OPENROUTER_API_KEY`    | any contender is served by OpenRouter (the default provider)                                                          |
+| `TYPESAFE_API_KEY`      | a `direct: typesafe:` contender runs                                                                                  |
+| `BRAINTRUST_API_KEY`    | a run is recorded in Braintrust (anything without `--local`)                                                          |
+| `BRAINTRUST_PROJECT_ID` | optional; the project UUID, beating the lineup's `project`                                                            |
+| `AGENT_EVALS_HELPER`    | optional; the helper to load instead of searching upward for `evals/eval_helper.rb` or `evals/.agent-eval.config.yml` |
 
 The suite's `env_files` load first, without overriding what is already exported. A missing key fails the run before any model is called, naming the variable.
 
