@@ -8,7 +8,7 @@ First release, extracted from the `extract-eval` suite of inquirex-llm and made 
 - Value objects: `Case`, `Usage`, `Completion`, `Reply`, `Metric`, `Score`, `RunResult`, `Contender`.
 - `Agent::Evals.configure` and `evals/eval_helper.rb`, found upward from the working directory (`--helper`, `AGENT_EVALS_HELPER`).
 - `Discovery` of `datasets/<dataset>/cases/<variant>/[NNN/]input.txt` with `expected.json` beside; any layout through the glob.
-- `Config`: the `.agent-eval.config.yml` lineup with effort and temperature lists expanded into contenders, and the required `request_types` list; a provider declares its `request_type` and a contender is admitted only when the suite declares it, else refused by name in the warnings.
+- `Config`: the `.agent-eval.config.yml` lineup with effort and temperature lists expanded into contenders, and the required `request_types` list, and a `direct:` section for a vendor's own API (`typesafe`), keyed by provider name; a provider declares its `request_type` and a contender is admitted only when the suite declares it, else refused by name in the warnings.
 - Providers: a registry asked last-registered first; `OpenRouter` through RubyLLM; `TypeSafe` as catalog, key and pricing with a transport stub; `Catalog` for model lists.
 - `Experiment`: parallel local runs, or Braintrust experiments when a project is given; the braintrust and ruby_llm gems are optional and named when missing.
 - `Verify`: empty inputs and broken `expected.json`, then the adapter's and the scorer's own checks. `SchemaValidator` for typed, closed expected values.

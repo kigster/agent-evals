@@ -98,7 +98,7 @@ The file at the suite root names the models to compare, their settings, and the 
 ```yaml
 # evals/.agent-eval.config.yml
 project: my-evals            # Braintrust project name (BRAINTRUST_PROJECT_ID wins when set)
-request_types: [prompt]      # required: prompt, typesafe, or both
+request_types: [prompt]      # required: what the suite's adapter sends
 
 defaults:
   effort: default            # default sends none and leaves the model's own setting
@@ -106,7 +106,7 @@ defaults:
   max_tokens: 8192           # covers the reasoning tokens a high effort spends
   parallelism: 4             # cases in flight per experiment; the default for -p
 
-vendors:
+vendors:                     # the OpenRouter list; every entry takes a prompt
   anthropic:
     - model: claude-fable-5
     - model: claude-opus-5
@@ -123,20 +123,29 @@ vendors:
   meta-llama:
     - model: llama-3.3-70b-instruct
   typesafe:
-    - model: jev-router      # Jev on OpenRouter, as a chat model
-  typesafe-api:
-    - model: jev-latest      # Jev through TypeSafe's own API, typed questions
+    - model: jev-router      # Jev on OpenRouter, a chat model
   moonshotai:
     - model: kimi-k3
+
+direct:                      # a vendor's own API, one request type each
+  typesafe:                  # request type "typesafe": noul, choice, score
+    - model: jev-latest
 ```
 
-Each entry under a vendor becomes `<vendor>/<model>`. `effort` and `temperature` take one value or a list; a list expands into one contender per value, so `effort: [low, high]` with `temperature: [0.0, 0.7]` runs four experiments for that model. Anything left out falls back to `defaults`. Flags (`-e`, `-t`, `--max-tokens`, `-p`) beat both.
+Each entry under a vendor becomes `<vendor>/<model>`, the OpenRouter id. `effort` and `temperature` take one value or a list; a list expands into one contender per value, so `effort: [low, high]` with `temperature: [0.0, 0.7]` runs four experiments for that model. Anything left out falls back to `defaults`. Flags (`-e`, `-t`, `--max-tokens`, `-p`) beat both.
+
+Each key under `direct:` names a provider the gem knows (today only `typesafe`); its entries take the same `{model:, effort:, temperature:, max_tokens:}` format and expand the same way, and render as `typesafe/jev-latest`. The contender carries its provider, so a direct `typesafe/jev-latest` and the OpenRouter chat model `typesafe/jev-router` can never be confused, whatever the ids look like. An unknown key under `direct:` is a configuration error naming the file and the known providers.
 
 #### Request types
 
-`request_types` is required. It says what the suite's adapter sends: `prompt` is a chat completion (system and user text in, text out), `typesafe` is TypeSafe's typed question API. Every provider declares the one request type it answers, and a contender is **admitted** only when its provider's type is in the suite's list. A refused contender is named in the run's warnings (`<model> refused: needs typesafe; this suite produces prompt`), left out of the matrix and the leaderboard, and never scored 0: a model the suite cannot ask did not answer wrongly. `cases` prints the refusals too, so the mismatch shows before anything runs. A missing, empty or unknown `request_types` is a configuration error naming the file.
+`request_types` is required. It says what the suite's adapter sends. The types, and what they mean, belong to the providers and show in `agent-evals --help`; a suite only names them:
 
-Vendor prefixes map to OpenRouter, with one exception: `typesafe-api/` maps to `Providers::TypeSafe`. So `typesafe/jev-router` is Jev *on OpenRouter*, a chat model, request type `prompt`, while `typesafe-api/jev-latest` is Jev through TypeSafe's own API, request type `typesafe`. A suite declaring `[prompt]` runs the first and refuses the second.
+| Type       | Provider                                 | Meaning                                              |
+| ---------- | ---------------------------------------- | ---------------------------------------------------- |
+| `prompt`   | OpenRouter (everything under `vendors:`) | a chat completion: system and user text in, text out |
+| `typesafe` | `direct: typesafe:`                      | typed questions: noul, choice, score                 |
+
+A contender is **admitted** only when its provider's type is in the suite's list. A refused contender is named in the run's warnings (`typesafe/jev-latest refused: needs typesafe; this suite produces prompt`), left out of the matrix and the leaderboard, and never scored 0: a model the suite cannot ask did not answer wrongly. `cases` prints the refusals too, so the mismatch shows before anything runs. A missing, empty or unknown `request_types` is a configuration error naming the file. A `[prompt]` suite that lists `direct: typesafe:` entries runs its `vendors:` and refuses those by name.
 
 ## The command line
 
@@ -171,7 +180,7 @@ The leaderboard has one column per metric the scorer declares, ranked by the `pr
 | Variable                | Needed when                                                  |
 | ----------------------- | ------------------------------------------------------------ |
 | `OPENROUTER_API_KEY`    | any contender is served by OpenRouter (the default provider) |
-| `TYPESAFE_API_KEY`      | a `typesafe-api/...` contender runs                          |
+| `TYPESAFE_API_KEY`      | a `direct: typesafe:` contender runs                         |
 | `BRAINTRUST_API_KEY`    | a run is recorded in Braintrust (anything without `--local`) |
 | `BRAINTRUST_PROJECT_ID` | optional; the project UUID, beating the lineup's `project`   |
 | `AGENT_EVALS_HELPER`    | optional; the helper to load instead of searching upward     |
@@ -180,12 +189,13 @@ The suite's `env_files` load first, without overriding what is already exported.
 
 ## Writing a provider
 
-A provider is one API: the ids it serves, the request type it answers, the keys it needs, the models it lists, and `complete`. Register it with `c.provider`; the last registered is asked first, and OpenRouter, which claims every id, is always last.
+A provider is one API: the request type it answers, the keys it needs, the models it lists, and `complete`. A provider that serves `vendors:` ids also says which (`prefix`); a `direct?` provider is reached only through a `direct:` key with its `name`. Register it with `c.provider`; the last registered is asked first for a `vendors:` id, and OpenRouter, which claims every id, is always last.
 
 ```ruby
 class Ollama < Agent::Evals::Providers::Base
   def name = "ollama"
-  def request_type = :prompt                          # chat completions; admitted by a suite declaring prompt
+  def request_type = :prompt                          # admitted by a suite declaring prompt
+  def request_type_description = "a chat completion"  # shown in --help; a suite never spells it
   def prefix = "ollama/"                              # serves "ollama/<model>"
   def env_keys = []                                   # local, no key
   def efforts = []                                    # takes no reasoning effort
@@ -207,7 +217,7 @@ Agent::Evals.configure { |c| c.provider Ollama.new }
 
 `model.effort`, `model.temperature` and `model.max_tokens` carry the contender's settings; nil means "send nothing". A transport failure should raise: the run counts it as an error, not as a wrong answer.
 
-`Providers::TypeSafe` ships with the model list, the key and the pricing of TypeSafe's API (`typesafe-api/` ids, request type `typesafe`), enough for `verify` and the cost column. Its `complete` raises "no typesafe consumer yet": the typed request shape will be defined by the first suite that declares `request_types: [typesafe]`.
+`Providers::TypeSafe` is a direct provider (`direct: typesafe:`, request type `typesafe`): it ships with the model list, the key and the pricing of TypeSafe's API, enough for `verify` and the cost column. Its `complete` raises "no typesafe consumer yet": the typed request shape will be defined by the first suite that declares `request_types: [typesafe]`.
 
 ## Public API
 
@@ -220,7 +230,7 @@ module Agent::Evals
   Metric     = Data.define(:name, :description, :aggregate, :primary)  # aggregate :mean, skipping nil
   Score      = Data.define(:value, :metrics, :outcomes, :diagnostics)  # value 0..1; metrics { name => Float | nil }
   RunResult  = Data.define(:experiment, :case, :reply, :score, :duration, :error)
-  Contender  = Data.define(:model, :effort, :temperature, :max_tokens)
+  Contender  = Data.define(:model, :effort, :temperature, :max_tokens, :provider)  # provider nil for vendors:, a name for direct:
 
   class Model;   attr_reader :id, :provider, :settings; def complete(system: nil, user:, json: true) = Completion; end
   class Adapter; def prepare(dataset); def call(kase, model:); def context(kase); def verify(dataset); def metadata; end
@@ -229,7 +239,7 @@ module Agent::Evals
   class Experiment       # one model over one dataset; local, or a Braintrust experiment when a project is given
   class Discovery, Config, Configuration, Runtime, Verify, Warnings, Launcher
   Config#request_types   # required in .agent-eval.config.yml; Config::REQUEST_TYPES = %w[prompt typesafe]
-  module Providers       # Base (request_type), Registry (admit), OpenRouter, TypeSafe, Catalog
+  module Providers       # Base (request_type, direct?), Registry (for, direct, admit), OpenRouter, TypeSafe, Catalog
   module Testing         # EchoAdapter, FakeProvider, FakeModel
 end
 ```
