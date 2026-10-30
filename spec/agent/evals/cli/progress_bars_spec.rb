@@ -35,6 +35,52 @@ RSpec.describe Agent::Evals::CLI::ProgressBars do
     expect(bars.send(:headline, 42)).to include("\e[33m")
   end
 
+  context "when the screen is too short for every job" do
+    subject(:bars) { described_class.new(terminal, clock: -> { now }, config: Dry::CLI::UI.config) }
+
+    let(:now) { 10.0 }
+    let(:running) do
+      Array.new(3) do |index|
+        Dry::CLI::UI::Widgets::Multi::Job.new("fake/running-#{index}", -> {}, Dry::CLI::UI::Widgets::Progress::Handle.new(2)).tap { it.state = :running }
+      end
+    end
+
+    before do
+      job.started = 8.0
+      job.seconds = 1.5 # finished at 9.5
+      bars.instance_variable_get(:@jobs).concat(running)
+      allow(terminal).to receive(:height).and_return(4)
+    end
+
+    it "keeps a job that just finished, full, ahead of the newest running rows" do
+      expect(bars.send(:visible)).to eq([job, running[0]])
+      expect(bars.send(:rows)[1]).to include("100%  3/3  in 1.5s")
+    end
+
+    context "when the finished row has lingered" do
+      let(:now) { 9.5 + described_class::LINGER }
+
+      it "gives its place back to the running rows" do
+        expect(bars.send(:visible)).to eq(running.first(2))
+      end
+    end
+
+    it "gives the finished at most half the rows, the newest first" do
+      newer = Dry::CLI::UI::Widgets::Multi::Job.new("fake/newer", -> {}, Dry::CLI::UI::Widgets::Progress::Handle.new(2))
+      newer.state = :done
+      newer.started = 9.0
+      newer.seconds = 0.9 # finished at 9.9
+      bars.instance_variable_get(:@jobs) << newer
+      expect(bars.send(:visible)).to eq([running[0], newer])
+    end
+
+    it "leaves every row out of the final frame" do
+      bars.instance_variable_set(:@state, :done)
+      running.each { it.state = :done }
+      expect(bars.send(:visible)).to be_empty
+    end
+  end
+
   it "overwrites the last frame in place, inside a synchronized update" do
     bars.instance_variable_set(:@drawn, 2)
     bars.send(:redraw)

@@ -9,6 +9,9 @@ module Agent
       # - the headline's bar, which counts every case, in yellow;
       # - a finished job keeps its bar, full, with the time it took where the
       #   ETA was, instead of turning into a one-line summary;
+      # - on a screen too short for every job, a finished row stays for
+      #   {LINGER} seconds, since a short job would otherwise leave the screen
+      #   before anyone saw it full: at two cases, its last frame is 50%;
       # - labels padded to at least {LABEL_WIDTH} columns;
       # - each frame overwrites the last line by line, inside a synchronized
       #   update, rather than clearing the screen below and drawing it again,
@@ -26,6 +29,10 @@ module Agent
         # Rows that have ended and drew a bar while they ran.
         ENDED = %i[done failed].freeze
 
+        # Seconds a finished row stays on a screen too short for every job,
+        # at most; see {#visible}.
+        LINGER = 1.5
+
         # Tells the terminal to show a frame only once all of it has arrived.
         # Terminals that do not know these ignore them.
         SYNC_START = "\e[?2026h"
@@ -42,6 +49,22 @@ module Agent
           width = label_width
           [headline(width), *visible.map { "#{INDENT}#{row(it, width - INDENT.length)}" }]
         end
+
+        # The running jobs and those just finished, in the order declared. The
+        # finished get at most half the rows, newest first: when jobs end
+        # faster than rows linger, the oldest must not hold the screen.
+        def visible
+          return super unless crowded? && state == :running
+
+          slots = [terminal.height - 2, 0].max
+          now = clock.call
+          finished = jobs.select { lingering?(it, now) }.max_by(slots / 2) { finished_at(it) }
+          jobs & (finished + jobs.select { it.state == :running }.first(slots - finished.size))
+        end
+
+        def lingering?(job, now) = ENDED.include?(job.state) && now - finished_at(job) < LINGER
+
+        def finished_at(job) = job.started + job.seconds
 
         def redraw
           drawn = rows
