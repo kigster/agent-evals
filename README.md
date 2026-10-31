@@ -49,7 +49,7 @@ $ agent-evals compare --local
 └─────────┴─────────────┴─────────┴────────────────┴─────────────┴───────────┴────────┴─────────┘
 ```
 
-Abridged: the real table also has `temp`, `time`, `tok_in` and `tok_out` columns. It's followed by the best value per dataset, in aligned columns with each model last, in the color of its progress bars, after a glossary of every column and an overall leaderboard, so the conclusions come last. `--scores` also prints every experiment by score, with its tracker's link. There is one column per metric your scorer declares.
+Abridged: the real table also has `temp`, `time`, `tok_in` and `tok_out` columns. It's followed by the best value per dataset, in aligned columns with each model last, in the color of its progress bars, after a glossary of every column and a leaderboard for each case variant, over every dataset, so the conclusions come last. `--scores` also prints every experiment by score, with its tracker's link. There is one column per metric your scorer declares.
 
 ## Run the examples
 
