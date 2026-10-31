@@ -346,11 +346,29 @@ module Agent
 
         def temperature_cell(summary) = summary.model.temperature.nil? ? "default" : summary.model.temperature
 
-        # Tokens, cost and the mean primary metric per contender, over every
-        # dataset it ran.
+        # One table per dataset of tokens, cost and the mean primary metric per
+        # contender.
         #
-        # @return [Proc] prints its conclusions, for after everything else
+        # @return [Proc] prints the conclusions over every dataset, for after everything else
         def totals(summaries)
+          summaries.group_by(&:dataset).sort_by(&:first).each do |dataset, group|
+            out.puts "[#{dataset}]"
+            contender_table(contender_groups(group))
+          end
+          groups = contender_groups(summaries)
+          best = best_contender(groups)
+          winner = groups.find { it[:weighted] && it[:errors].zero? }
+          lambda do
+            value_line(" overall (#{contender_label(groups[best][:first])})", groups[best][:value], groups[best][:usage].cost_usd) if best
+            weighted_line(" overall (#{contender_label(winner[:first])})", winner[:weighted]) if @weighted && winner
+          end
+        end
+
+        # Each contender's numbers over the given experiments, best first.
+        #
+        # @param summaries [Array<Experiment::Summary>]
+        # @return [Array<Hash>]
+        def contender_groups(summaries)
           groups = summaries.group_by { [it.model.key, it.model.effort, it.model.temperature] }.values.map do |group|
             values = group.filter_map { it.mean(primary) }
             { first: group.first, errors: group.sum { it.errors.size },
@@ -360,22 +378,25 @@ module Agent
           end
           weighted = weighted_by(groups.map { it[:row] })
           groups.each_with_index { |g, index| g[:weighted] = weighted[index] }
-          groups.sort_by! { -((@weighted ? it[:weighted] : it[:value]) || -1) }
+          groups.sort_by { -((@weighted ? it[:weighted] : it[:value]) || -1) }
+        end
+
+        # @param groups [Array<Hash>] from {#contender_groups}
+        # @return [Integer, nil] the index of the best value
+        def best_contender(groups) = best_value(groups.map { [it[:value], it[:usage].cost_usd, it[:errors]] })
+
+        # @param groups [Array<Hash>] from {#contender_groups}
+        # @return [void]
+        def contender_table(groups)
           rows = groups.map do |g|
             s = g[:first]
             [s.model.id, s.model.effort || "default", temperature_cell(s), *(percent(g[:weighted]) if @weighted), percent(g[:value]),
              g[:errors], g[:usage].input_tokens, g[:usage].output_tokens, dollars(g[:usage].cost_usd)]
           end
-          best = best_value(groups.map { [it[:value], it[:usage].cost_usd, it[:errors]] })
           table(rows,
             header:    ["model", "effort", "temp", *("wscore" if @weighted), primary.name, "errors", "tok_in", "tok_out", "cost"],
-            highlight: [best].compact,
+            highlight: [best_contender(groups)].compact,
             fill:      0)
-          winner = groups.find { it[:weighted] && it[:errors].zero? }
-          lambda do
-            value_line(" overall (#{contender_label(groups[best][:first])})", groups[best][:value], groups[best][:usage].cost_usd) if best
-            weighted_line(" overall (#{contender_label(winner[:first])})", winner[:weighted]) if @weighted && winner
-          end
         end
 
         # What {WeightedScore} reads from one experiment.
@@ -467,7 +488,7 @@ module Agent
         def model_colors = @model_colors ||= ModelColors.new
 
         # One row per experiment, best primary metric first, or best wscore when the
-        # file sets weights; the glossary; the totals, over several datasets; with
+        # file sets weights; the glossary; the totals per dataset, over several; with
         # scores, every experiment by score; and, last, the winners.
         def leaderboard(summaries, scores: false)
           weighted = weighted_scores(summaries)

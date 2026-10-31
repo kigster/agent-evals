@@ -405,6 +405,10 @@ RSpec.describe Agent::Evals::Launcher do
   context "with compare over two datasets, by default" do
     let(:argv) { %w[compare --local --no-open -m fake/one] }
 
+    it "prints the contenders' totals for each dataset" do
+      expect(run_cli).to match(/^\[animals\]\n┌.*│ model .*^\[colors\]\n┌.*│ model /m)
+    end
+
     it "leaves out every experiment by score" do
       expect(run_cli).not_to include('│ url ')
     end
