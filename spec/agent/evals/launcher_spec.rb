@@ -389,6 +389,19 @@ RSpec.describe Agent::Evals::Launcher do
     end
   end
 
+  context "with a metric named like one of the gem's columns" do
+    let(:argv) { %w[compare --local --no-open -m fake/echo -d colors] }
+
+    before do
+      metric = Agent::Evals::Metric.new(name: "score", description: "The scorer's own score.", primary: true)
+      allow(configuration.scorer).to receive(:metrics).and_return([metric])
+    end
+
+    it "lists it once in the glossary" do
+      expect(run_cli.scan(/^│ score +│ (.{10})/).flatten).to eq(["The scorer"])
+    end
+  end
+
   context "with a lineup that sets no weights" do
     let(:argv) { %w[compare --local --no-open -m fake/echo] }
 

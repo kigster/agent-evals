@@ -486,9 +486,9 @@ module Agent
           scores(summaries)
         end
 
-        # @return [Array<Array(String, String)>] the metrics' descriptions, then the gem's columns
+        # @return [Array<Array(String, String)>] the metrics' descriptions, then the gem's columns, less any a metric took the name of
         def glossary
-          described = metrics.map { [it.name, it.description.to_s.empty? ? "(no description)" : it.description] } + GLOSSARY.to_a
+          described = metrics.map { [it.name, it.description.to_s.empty? ? "(no description)" : it.description] } + GLOSSARY.reject { |term, _| metrics.any? { it.name == term } }.to_a
           @weighted ? [["wscore", @weighted.description], *described] : described
         end
       end
