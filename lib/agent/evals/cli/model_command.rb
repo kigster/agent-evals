@@ -70,6 +70,10 @@ module Agent
             type:    :boolean,
             default: false,
             desc:    "Also print every experiment by score, with its cost and its tracker's link"
+          subclass.option :totals,
+            values:  %w[overall variant both],
+            default: "overall",
+            desc:    "Group TUI totals by overall results, case variant or both"
           subclass.option :format,
             values: %w[tui html json],
             desc:   "Override the configured display: tui, html or json"
@@ -333,7 +337,7 @@ module Agent
             autosave: results[:autosave],
             display: results[:display],
             open:) do |shown|
-            terminal_report(shown, output:, open:, scores:) { details&.call(shown) }
+            terminal_report(shown, output:, open:, scores:, totals_mode: options[:totals]) { details&.call(shown) }
           end
           if result.json_path
             status_box(:success, "JSON results written to #{relative(result.json_path)}", stream: err)
@@ -345,9 +349,9 @@ module Agent
           save_warnings unless results[:display] == "tui"
         end
 
-        def terminal_report(summaries, output:, open:, scores:, &details)
+        def terminal_report(summaries, output:, open:, scores:, totals_mode:, &details)
           terminal = Agent::Evals::Render::Reports::Terminal.new(invocation:, writing_to: method(:writing_to), leaderboard: method(:leaderboard))
-          path = terminal.call(summaries:, output:, scores:, &details)
+          path = terminal.call(summaries:, output:, scores:, totals_mode:, &details)
           status_box(:info, "Report written to #{relative(path)}", stream: err) if path
           save_warnings
           url = summaries.max_by { it.score || -1 }&.permalink
@@ -456,15 +460,19 @@ module Agent
 
         def temperature_cell(summary) = summary.model.temperature.nil? ? "default" : summary.model.temperature
 
-        # One table per case variant, over every dataset, of tokens, cost and the
-        # mean primary metric per contender, so the variants can be compared.
+        # The selected totals view: one aggregate table, one per variant, or both.
         #
         # @return [Proc, nil] prints the conclusions over every dataset, for after
         #   everything else; nil over a single dataset
-        def totals(summaries)
+        def totals(summaries, mode: "overall")
           variants = summaries.flat_map { |summary| summary.results.map { it.case.variant } }.uniq.sort
           several_datasets = summaries.map(&:dataset).uniq.size > 1
-          if several_datasets || variants.size > 1
+          has_multiple_groups = several_datasets || variants.size > 1
+          if has_multiple_groups && %w[overall both].include?(mode)
+            out.puts "[all cases]"
+            contender_table(contender_groups(summaries))
+          end
+          if has_multiple_groups && %w[variant both].include?(mode)
             variants.each do |variant|
               out.puts "[#{variant}]"
               contender_table(contender_groups(summaries.map { it.for_variant(variant, metrics) }))
@@ -605,9 +613,9 @@ module Agent
         def model_colors = @model_colors ||= ModelColors.new
 
         # One row per experiment, best primary metric first, or best wscore when the
-        # file sets weights; the glossary; the totals per case variant; with
+        # file sets weights; the glossary; the selected totals view; with
         # scores, every experiment by score; and, last, the winners.
-        def leaderboard(summaries, scores: false)
+        def leaderboard(summaries, scores: false, totals_mode: "overall")
           weighted = weighted_scores(summaries)
           ranked = summaries.sort_by { [it.dataset, -((@weighted ? weighted[it] : it.mean(primary)) || -1)] }
           rows = ranked.map do |s|
@@ -622,7 +630,7 @@ module Agent
                         "errors", "time", "tok_in", "tok_out", "cost"],
             highlight: best)
           table(glossary, header: %w[Term Description], fill: 1, wrap: true)
-          overall = totals(summaries)
+          overall = totals(summaries, mode: totals_mode)
           scores(summaries) if scores
           winners("Best value: the cheapest within #{(VALUE_MARGIN * 100).round} points of the best #{primary.name}",
             best.map { ranked[it] },

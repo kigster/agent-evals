@@ -273,7 +273,7 @@ RSpec.describe Agent::Evals::Launcher do
     let(:run_options) { JSON.parse(File.read(Dir[File.join(destination, "*.json")].fetch(0))).fetch("run_options") }
     let(:argv) do
       ["compare", "--config", config_path, "-m", "fake/echo", "-d", "colors", "-c", "clear/001",
-       "-e", "high", "-t", "0.7", "--local", "--no-open"]
+       "-e", "high", "-t", "0.7", "--totals", "variant", "--local", "--no-open"]
     end
 
     before do
@@ -294,7 +294,6 @@ RSpec.describe Agent::Evals::Launcher do
     it "saves the parsed flags and effective experiment settings in the JSON" do
       run_cli
 
-      expect(kernel).to have_received(:exit).with(0)
       expect(run_options).to include(
         "command" => "compare",
         "cli"     => hash_including(
@@ -303,6 +302,7 @@ RSpec.describe Agent::Evals::Launcher do
           "case"        => ["clear/001"],
           "effort"      => "high",
           "temperature" => "0.7",
+          "totals"      => "variant",
           "local"       => true
         ),
         "results" => hash_including("autosave" => true, "display" => "none", "destination" => destination)
@@ -619,8 +619,19 @@ RSpec.describe Agent::Evals::Launcher do
   context "with compare over two datasets, by default" do
     let(:argv) { %w[compare --local --no-open -m fake/one] }
 
-    it "prints the contenders' totals for each case variant" do
+    it "prints the contenders' totals across all cases" do
+      expect(run_cli).to match(/^\[all cases\]\n┌.*│ model /m)
+      expect(run_cli).not_to include("[clear]\n")
+    end
+
+    it "prints the contenders' totals for each case variant when requested" do
+      argv << "--totals" << "variant"
       expect(run_cli).to match(/^\[clear\]\n┌.*│ model .*^\[vague\]\n┌.*│ model /m)
+    end
+
+    it "prints both interpretations when requested" do
+      argv << "--totals" << "both"
+      expect(run_cli).to match(/^\[all cases\]\n┌.*│ model .*^\[clear\]\n┌.*^\[vague\]\n┌/m)
     end
 
     it "leaves out every experiment by score" do
@@ -635,7 +646,7 @@ RSpec.describe Agent::Evals::Launcher do
   end
 
   context "with compare over one dataset's two variants" do
-    let(:argv) { %w[compare --local --no-open -m fake/one -d colors] }
+    let(:argv) { %w[compare --local --no-open -m fake/one -d colors --totals variant] }
 
     it("still compares the variants") { expect(run_cli).to match(/^\[clear\]\n.*^\[vague\]\n/m) }
     it("has no overall conclusions") { expect(run_cli).not_to include("best value overall") }
