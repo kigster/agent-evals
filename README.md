@@ -371,6 +371,24 @@ direct:                      # a vendor's own API, one request type each
 
 **`direct:`** Each key names a provider the gem knows (today only `typesafe`). Entries take the same `{model:, effort:, temperature:, max_tokens:}` format, expand the same way, and render as `typesafe/jev-latest`. The contender carries its provider, so a direct `typesafe/jev-latest` and the OpenRouter chat model `typesafe/jev-router` never get confused. An unknown key is a configuration error naming the file and the known providers.
 
+#### Weighted score
+
+Say what matters most, and the leaderboard adds a `wscore` column, ranks by it, and names the best per dataset and overall:
+
+```yaml
+weighted_score:
+  weights:                   # relative; a negative weight means lower is better
+    score: 0.4               # the overall score, or any metric your scorer declares
+    hallucinated_rate: -0.2  # a metric of your own
+    cost: -0.2
+    time: -0.1
+    errors: -0.1             # one error takes 20 points off the total
+```
+
+`wscore = Σ(|weight| × goodness) / Σ|weight|`, from 0% to 100%, higher is better. Metrics count as they are, or as `1 - value` under a negative weight. When `errors` is weighted, errors come off the total: 20 points for one, 25 for two, 30 for three, and so on, down to 0%. A failed case has no scores, so no other column notices it. A clean contender gets the whole of the weight on `errors`. `cost` and `time` go on a log scale between the lowest and highest in the table, so each doubling costs the same, however expensive the priciest model is. That makes a weighted score comparable only within one table.
+
+You can weight `score`, `errors`, `time`, `cost` and your scorer's metrics. Anything else, tokens included, is refused before a model is called. A contender missing a weighted value shows `-`, and one with errors cannot be named best. Without `weighted_score`, nothing changes.
+
 #### Request types
 
 `request_types` is required. It says what the suite's adapter sends. The types belong to the providers and show in `agent-evals --help`; a suite only names them:

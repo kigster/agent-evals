@@ -20,7 +20,11 @@ module Agent
     #     temperature: 0.2
     #     max_tokens: 4096
     #     parallelism: 4
-    #   vendors:                     # the OpenRouter list; every entry takes a prompt
+    #   weighted_score:              # optional: what matters most; see {WeightedScore}
+    #     weights:
+    #       score: 0.6
+    #       cost: -0.4
+    #   vendors:                   # the OpenRouter list; every entry takes a prompt
     #     anthropic:
     #       - model: claude-haiku-5.5
     #         effort: [default, low]  # a list expands into one contender per value
@@ -99,6 +103,18 @@ module Agent
 
       # @return [Hash{String => Object}] the built-in defaults under the file's own
       def defaults = BUILTIN.merge(@data.fetch("defaults", nil) || {})
+
+      # @return [Hash{String => Object}] `weighted_score.weights`; see {WeightedScore}
+      # @raise [Error] when either level is not a mapping
+      def score_weights
+        section = @data["weighted_score"]
+        return {} if section.nil?
+
+        weights = section["weights"] if section.is_a?(Hash)
+        raise Error, "#{path}: weighted_score needs a weights: mapping of column to number" unless weights.is_a?(Hash)
+
+        weights.transform_keys(&:to_s)
+      end
 
       # Every vendor/model/effort/temperature combination the file lists,
       # `vendors:` first, then `direct:`.

@@ -17,6 +17,7 @@ module Agent
 
         def call(models:, dataset:, dry_run:, **options)
           config = lineup(options)
+          weigh(config)
           contenders = contenders(config, models, options)
           datasets = datasets(dataset)
           return matrix(datasets, contenders) if dry_run

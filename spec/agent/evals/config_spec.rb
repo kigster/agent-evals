@@ -86,6 +86,22 @@ RSpec.describe Agent::Evals::Config do
     end
   end
 
+  describe "#score_weights" do
+    it "is empty without the section" do
+      expect(config.score_weights).to eq({})
+    end
+
+    it "reads the weights" do
+      File.write(path, "weighted_score:\n  weights:\n    cost: -0.5\n")
+      expect(config.score_weights).to eq("cost" => -0.5)
+    end
+
+    it "refuses a section without a weights mapping" do
+      File.write(path, "weighted_score: 3\n")
+      expect { config.score_weights }.to raise_error(Agent::Evals::Error, /needs a weights: mapping/)
+    end
+  end
+
   describe "#request_types" do
     it "reads the declared types as symbols" do
       File.write(path, "request_types: [prompt, typesafe]\n")
