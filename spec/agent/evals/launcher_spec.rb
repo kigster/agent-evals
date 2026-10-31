@@ -177,7 +177,7 @@ RSpec.describe Agent::Evals::Launcher do
   context "with run writing its report to a file" do
     let(:dir) { Dir.mktmpdir }
     let(:path) { File.join(dir, "report.log") }
-    let(:argv) { ["run", "-m", "fake/one,fake/two", "-c", "clear/001", "--local", "-o", path] }
+    let(:argv) { ["run", "-m", "fake/one,fake/two", "-c", "clear/001", "--local", "--scores", "-o", path] }
 
     after { FileUtils.remove_entry(dir) }
 
@@ -269,8 +269,8 @@ RSpec.describe Agent::Evals::Launcher do
 
     before do
       allow(Etc).to receive(:nprocessors).and_return(3)
-      allow(Agent::Evals::CLI::ProgressBars).to receive(:for).and_wrap_original do |build, *args|
-        build.call(*args).tap do |bars|
+      allow(Agent::Evals::CLI::ProgressBars).to receive(:for).and_wrap_original do |build, *args, **options|
+        build.call(*args, **options).tap do |bars|
           allow(bars).to receive(:run).and_wrap_original do |original, *rest, **kwargs, &block|
             concurrent << kwargs[:concurrent]
             original.call(*rest, **kwargs, &block)
@@ -365,7 +365,7 @@ RSpec.describe Agent::Evals::Launcher do
     after { FileUtils.remove_entry(dir) }
 
     it "adds the column, the winners and the formula" do
-      expect(run_cli).to include("wscore", "best wscore [colors]", "best wscore overall", "Σ(|weight| × goodness)")
+      expect(run_cli).to include("wscore", "Best wscore", "best wscore overall", "Σ(|weight| × goodness)")
     end
 
     context "when a weight names tokens" do
@@ -377,6 +377,49 @@ RSpec.describe Agent::Evals::Launcher do
         expect(stdout.string).not_to include("best value")
       end
     end
+  end
+
+  context "with a run in color" do
+    let(:argv) { %w[compare --local --no-open -m fake/echo,fake/parrot -d colors] }
+
+    before { allow(Pastel).to(receive(:new).and_wrap_original { |original, **options| original.call(**options, enabled: true) }) }
+
+    it "labels the value and draws the model last, in a bright color" do
+      expect(run_cli).to match(%r{Best value.*\[colors\] +effort=default +field_accuracy=100\.0% +\$0\.\d+ +(\e\[9[1-7]m)?fake/(echo|parrot)}m)
+    end
+  end
+
+  context "with a metric named like one of the gem's columns" do
+    let(:argv) { %w[compare --local --no-open -m fake/echo -d colors] }
+
+    before do
+      metric = Agent::Evals::Metric.new(name: "score", description: "The scorer's own score.", primary: true)
+      allow(configuration.scorer).to receive(:metrics).and_return([metric])
+    end
+
+    it "lists it once in the glossary" do
+      expect(run_cli.scan(/^│ score +│ (.{10})/).flatten).to eq(["The scorer"])
+    end
+  end
+
+  context "with compare over two datasets, by default" do
+    let(:argv) { %w[compare --local --no-open -m fake/one] }
+
+    it "leaves out every experiment by score" do
+      expect(run_cli).not_to include('│ url ')
+    end
+
+    it "ends on the conclusions, the overall ones last" do
+      lines = run_cli.strip.lines
+      expect(lines.last).to start_with("best value overall")
+      expect(lines[-2]).to include("[colors]")
+    end
+  end
+
+  context "with --scores" do
+    let(:argv) { %w[compare --local --no-open -m fake/one --scores] }
+
+    it("prints every experiment by score, before the conclusions") { expect(run_cli).to match(/│ url .*Best value/m) }
   end
 
   context "with a lineup that sets no weights" do
@@ -478,7 +521,7 @@ RSpec.describe Agent::Evals::Launcher do
   end
 
   context "with a remote tracker" do
-    let(:argv) { %w[run -m fake/one -d colors -c clear/001 --tracker recording-tracker] }
+    let(:argv) { %w[run -m fake/one -d colors -c clear/001 --tracker recording-tracker --scores] }
     let(:opened) { true }
 
     before do

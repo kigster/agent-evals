@@ -24,7 +24,7 @@ module Agent
 
           setup!(contenders, options)
           runs = datasets.flat_map { |name| contenders.map { experiment(it, config, options, dataset: name) } }
-          report(execute(runs, concurrency: concurrency(options)), output: options[:output], open: options[:open])
+          report(execute(runs, concurrency: concurrency(options)), output: options[:output], open: options[:open], scores: options[:scores])
         end
       end
     end
