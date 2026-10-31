@@ -368,21 +368,20 @@ module Agent
           weighted_line(" overall (#{contender_label(winner[:first])})", winner[:weighted]) if @weighted && winner
         end
 
-        # What {WeightedScore} reads from one experiment. Errors are a share of
-        # its cases, so that they sit on the same scale as the metrics.
+        # What {WeightedScore} reads from one experiment.
         #
         # @param summary [Experiment::Summary]
         # @return [Hash{String => Numeric, nil}]
         def weighted_row(summary)
           metrics.to_h { [it.name, summary.mean(it)] }.merge(
             "score"  => summary.score,
-            "errors" => summary.errors.size.fdiv([summary.results.size, 1].max),
+            "errors" => summary.errors.size,
             "time"   => summary.duration,
             "cost"   => summary.usage.cost_usd.to_f
           )
         end
 
-        # One contender over every dataset: magnitudes add up, the rest average.
+        # One contender over every dataset: errors and magnitudes add up, the rest average.
         #
         # @param group [Array<Experiment::Summary>]
         # @return [Hash{String => Numeric, nil}]
@@ -393,7 +392,7 @@ module Agent
             total = values.sum(&:to_f)
             next [name, nil] if values.any?(&:nil?)
 
-            [name, WeightedScore::MAGNITUDES.include?(name) ? total : total / values.size]
+            [name, ["errors", *WeightedScore::MAGNITUDES].include?(name) ? total : total / values.size]
           end
         end
 

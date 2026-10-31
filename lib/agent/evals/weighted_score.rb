@@ -14,8 +14,11 @@ module Agent
     #
     #   weighted_score = Σ(|weight| × goodness) / Σ|weight|
     #
-    # Goodness runs from 0 to 1. Metrics, and errors as a share of the cases,
-    # are used as they are, or as 1 - value under a negative weight. {MAGNITUDES}
+    # Goodness runs from 0 to 1. Metrics are used as they are, or as 1 - value
+    # under a negative weight. Each error halves the errors column's goodness, so
+    # that a single one costs half its weight: a failed case has no scores, so
+    # no other column notices it, and as a share of the cases it would barely
+    # register. {MAGNITUDES}
     # are placed on a log scale between the lowest and highest in the group, so
     # that each doubling costs the same: on a linear scale, one model a hundred
     # times the price would squash all the others together. Where the whole
@@ -31,6 +34,9 @@ module Agent
       # setting, not a result, and tokens are already in the cost.
       COLUMNS = ["score", "errors", *MAGNITUDES].freeze
 
+      # What each error multiplies the errors column's goodness by.
+      ERROR_FACTOR = 0.5
+
       attr_reader :weights
 
       # @param weights [Hash{String => Numeric}]
@@ -43,6 +49,8 @@ module Agent
 
         invalid = weights.reject { |_name, weight| weight.is_a?(Numeric) }.keys
         raise Error, "weighted_score: weights must be numbers: #{invalid.join(", ")}" if invalid.any?
+
+        raise Error, "weighted_score: errors must have a negative weight, since fewer is better" if weights.fetch("errors", -1).positive?
 
         @weights = weights.reject { |_name, weight| weight.zero? }
         raise Error, "weighted_score: every weight is zero" if @weights.empty?
@@ -66,6 +74,7 @@ module Agent
       # @return [String] the formula, with this lineup's weights, for the glossary
       def description
         "Σ(|weight| × goodness) / Σ|weight|, from 0% to 100%, and higher is better. A negative weight means that column is better low. " \
+          "Each error halves the errors column. " \
           "#{MAGNITUDES.join(", ")} are on a log scale within the group, so compare weighted_score within one table only. " \
           "Weights: #{weights.map { |name, weight| "#{name} #{weight}" }.join(", ")}."
       end
@@ -73,6 +82,8 @@ module Agent
       private
 
       def goodness(name, value, weight, rows)
+        return ERROR_FACTOR**value if name == "errors"
+
         position = MAGNITUDES.include?(name) ? position(value, rows.filter_map { it[name] }) : value.to_f
         return 1.0 if position.nil?
 

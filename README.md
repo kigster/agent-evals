@@ -382,10 +382,10 @@ weighted_score:
     hallucinated_rate: -0.2  # a metric of your own
     cost: -0.2
     time: -0.1
-    errors: -0.1             # as a share of the cases
+    errors: -0.1             # each error halves this part
 ```
 
-`weighted_score = Σ(|weight| × goodness) / Σ|weight|`, from 0% to 100%, higher is better. Metrics and `errors` count as they are, or as `1 - value` under a negative weight. `cost` and `time` go on a log scale between the lowest and highest in the table, so each doubling costs the same, however expensive the priciest model is. That makes a weighted score comparable only within one table.
+`weighted_score = Σ(|weight| × goodness) / Σ|weight|`, from 0% to 100%, higher is better. Metrics count as they are, or as `1 - value` under a negative weight. Each error halves the `errors` part, so a single one costs half its weight: a failed case has no scores, so no other column notices it. `cost` and `time` go on a log scale between the lowest and highest in the table, so each doubling costs the same, however expensive the priciest model is. That makes a weighted score comparable only within one table.
 
 You can weight `score`, `errors`, `time`, `cost` and your scorer's metrics. Anything else, tokens included, is refused before a model is called. A contender missing a weighted value shows `-`, and one with errors cannot be named best. Without `weighted_score`, nothing changes.
 

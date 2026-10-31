@@ -22,6 +22,14 @@ RSpec.describe Agent::Evals::WeightedScore do
       it { expect(weighted.call([{ "score" => 1.0, "exact" => 0.0 }])).to eq([0.75]) }
     end
 
+    context "with errors" do
+      let(:weights) { { "errors" => -1 } }
+
+      it "halves for each one, so that a single error counts" do
+        expect(weighted.call([0, 1, 2].map { { "errors" => it } })).to eq([1.0, 0.5, 0.25])
+      end
+    end
+
     context "with cost" do
       let(:weights) { { "cost" => -1 } }
 
@@ -69,6 +77,10 @@ RSpec.describe Agent::Evals::WeightedScore do
 
     it "refuses a weight that is not a number" do
       expect { described_class.new({ "score" => "high" }, metrics: []) }.to raise_error(Agent::Evals::Error, /must be numbers: score/)
+    end
+
+    it "refuses a positive weight on errors" do
+      expect { described_class.new({ "errors" => 1 }, metrics: []) }.to raise_error(Agent::Evals::Error, /errors must have a negative weight/)
     end
 
     it "refuses all zeros" do
