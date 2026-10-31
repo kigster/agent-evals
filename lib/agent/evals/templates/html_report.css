@@ -125,6 +125,9 @@ th { color: var(--muted); font-weight: 500; }
 .sortable th[aria-sort="ascending"]::after { content: " ↑"; }
 .sortable th[aria-sort="descending"]::after { content: " ↓"; }
 .sortable th:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.standings-table th > span { display: block; }
+.standings-settings { color: var(--text); font-weight: 400; }
+.standings-table .standings-bar { min-width: 300px; }
 
 .scroll {
   max-width: 100%;

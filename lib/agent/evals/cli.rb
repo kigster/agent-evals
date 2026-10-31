@@ -31,6 +31,7 @@ module Agent
 
       register "run", Run
       register "compare", Compare
+      register "render", Render
       register "cases", Cases
       register "verify", Verify
       register "version", Version, aliases: ["-V", "--version"]

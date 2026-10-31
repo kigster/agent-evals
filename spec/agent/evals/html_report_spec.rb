@@ -18,7 +18,7 @@ RSpec.describe Agent::Evals::HtmlReport do
 
   describe "ranking and case details" do
     let(:configuration) { Agent::Evals.configuration }
-    let(:metrics) { [Agent::Evals::Metric.new(name: "accuracy", primary: true)] }
+    let(:metrics) { [Agent::Evals::Metric.new(name: "accuracy")] }
     let(:echo_model) { build_model("fake/echo") }
     let(:parrot_model) { build_model("fake/parrot") }
     let(:case_one) { build_case("partial/001", number: 1) }
@@ -51,7 +51,7 @@ RSpec.describe Agent::Evals::HtmlReport do
       )
     end
 
-    def build_summary(model:, results:)
+    def build_summary(model:, results:, usage: Agent::Evals::Usage.zero)
       Agent::Evals::Experiment::Summary.new(
         model:,
         dataset: "coverage",
@@ -61,15 +61,15 @@ RSpec.describe Agent::Evals::HtmlReport do
         errors: [],
         duration: 0,
         permalink: nil,
-        usage: Agent::Evals::Usage.zero
+        usage:
       )
     end
 
-    def scored_run(model:, kase:, accuracy:)
+    def scored_run(model:, kase:, accuracy:, value: nil)
       build_run(
         model:,
         kase:,
-        score: Agent::Evals::Score.new(value: accuracy, metrics: { "accuracy" => accuracy }),
+        score: Agent::Evals::Score.new(value: value || accuracy, metrics: { "accuracy" => accuracy }),
         reply: Agent::Evals::Reply.new(output: { "value" => accuracy })
       )
     end
@@ -113,20 +113,60 @@ RSpec.describe Agent::Evals::HtmlReport do
       expect(report).not_to include("transport <script>", "reply <script>")
     end
 
-    it "uses the configured weighted score to select and label the leader" do
-      weighted_score = Agent::Evals::WeightedScore.new({ "accuracy" => 1.0 }, metrics: ["accuracy"])
-      report = render_report([
-                               build_summary(model: echo_model, results: [scored_run(model: echo_model, kase: case_one, accuracy: 0.9)]),
-                               build_summary(model: parrot_model, results: [scored_run(model: parrot_model, kase: case_one, accuracy: 0.2)])
-                             ],
-        weighted_score:)
-
-      expect(report).to include(
-        "Weighted score from the lineup",
-        "ALL-CASE LEADER",
-        '<span class="model-id">echo</span>',
-        "90.0%"
+    it "rounds recorded cost upward to the nearest cent" do
+      summary = build_summary(
+        model:   echo_model,
+        results: [scored_run(model: echo_model, kase: case_one, accuracy: 0.8)],
+        usage:   Agent::Evals::Usage.new(input_tokens: 1, output_tokens: 1, cost_usd: 0.001)
       )
+
+      expect(render_report([summary])).to include("<b>$0.01</b>", "$0.01")
+    end
+
+    context "with a weighted score" do
+      let(:weighted_score) { Agent::Evals::WeightedScore.new({ "accuracy" => 1.0 }, metrics: ["accuracy"]) }
+      let(:weighted_summaries) do
+        [
+          build_summary(model: echo_model, results: [scored_run(model: echo_model, kase: case_one, accuracy: 0.9, value: 0.6)]),
+          build_summary(model: parrot_model, results: [scored_run(model: parrot_model, kase: case_one, accuracy: 0.2, value: 0.95)])
+        ]
+      end
+      let(:report) { render_report(weighted_summaries, weighted_score:) }
+
+      it "uses the configured score to select and label the leader" do
+        expect(report).to include(
+          "Weighted score from the lineup",
+          "ALL-CASE LEADER",
+          '<span class="model-id">echo</span>',
+          "90.0%"
+        )
+      end
+
+      it "sorts the coverage table from highest weighted score to lowest" do
+        leader_row = '<td><span class="provider">fake</span></td><td><span class="model-id">echo</span></td>'
+        runner_up_row = '<td><span class="provider">fake</span></td><td><span class="model-id">parrot</span></td>'
+        coverage_table = report[%r{<h3>Coverage by model</h3>\s*<div class="scroll">\s*<table class="sortable">(.*?)</table>}m, 1]
+
+        expect(coverage_table.index(leader_row)).to be < coverage_table.index(runner_up_row)
+      end
+
+      it "shows weighted and primary scores as sortable columns beside the bars" do
+        hero_table = report[%r{<table class="sortable standings-table"[^>]*>(.*?)</table>}m, 1]
+
+        expect(hero_table).to include(
+          "<th><span>Provider</span><span>(vendor)</span></th>",
+          "<th><span>Model</span><span>(ID and settings)</span></th>",
+          "<th><span>Weighted</span><span>score</span></th>",
+          "<th><span>Primary score</span><span>(score)</span></th>",
+          "<th class=\"standings-bar\"><span>Score</span><span>bar</span></th>",
+          "90.0%",
+          "60.0%",
+          "20.0%",
+          "95.0%"
+        )
+        expect(hero_table).to include('<span class="model-id">echo</span> <span class="standings-settings">(default, t=default)</span>')
+        expect(hero_table.index('class="model-id">echo')).to be < hero_table.index('class="model-id">parrot')
+      end
     end
   end
 end

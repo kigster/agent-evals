@@ -215,9 +215,14 @@ RSpec.describe Agent::Evals::Launcher do
         "field_accuracy",
         '<th>Provider</th><th>Model</th><th>Effort</th><th>Temperature</th>',
         'table class="sortable"',
+        'table class="sortable standings-table"',
         'aria-sort',
         'max-width: 1520px',
         'overscroll-behavior-inline: contain',
+        '<th><span>Weighted</span><span>score</span></th>',
+        '<th><span>Primary score</span><span>(field_accuracy)</span></th>',
+        '<th class="standings-bar"><span>Score</span><span>bar</span></th>',
+        '.standings-table .standings-bar { min-width: 300px; }',
         'class="provider">fake',
         'class="model-id">echo'
       )
@@ -237,6 +242,50 @@ RSpec.describe Agent::Evals::Launcher do
         expect(File.read(report_path)).to include("<!doctype html>", "clear/001")
         expect(stderr.string).to include("HTML report written to")
       end
+    end
+  end
+
+  context "with compare writing a JSON report" do
+    let(:dir) { Dir.mktmpdir }
+    let(:path) { File.join(dir, "results.json") }
+    let(:argv) { ["compare", "--format", "json", "-m", "fake/echo", "-d", "colors", "-e", "high", "-t", "0.2", "--local", "--no-open", "-o", path] }
+
+    before { allow(Dry::CLI::UI::Invocation).to receive(:root).and_return(dir) }
+
+    after { FileUtils.remove_entry(dir) }
+
+    it "writes a reusable JSON report with case inputs and model outputs" do
+      run_cli
+      document = JSON.parse(File.read(path))
+
+      expect(document).to include("format" => "agent-evals-report", "version" => 1)
+      expect(document.dig("summaries", 0, "results", 0)).to include("case", "reply", "score")
+      expect(document.dig("summaries", 0, "results", 0, "case")).to include("input", "expected")
+      expect(document.dig("summaries", 0, "results", 0, "reply")).to include("output", "raw")
+      expect(stderr.string).to include("JSON report written to")
+    end
+  end
+
+  context "with render of a saved JSON report" do
+    let(:dir) { Dir.mktmpdir }
+    let(:json_path) { File.join(dir, "results.json") }
+    let(:html_path) { File.join(dir, "report.html") }
+    let(:argv) { ["render", json_path, "-o", html_path] }
+    let(:render_runtime) { instance_double(Agent::Evals::Runtime, setup!: nil, browse: true) }
+
+    before do
+      allow(Dry::CLI::UI::Invocation).to receive(:root).and_return(dir)
+      described_class.new(["compare", "--format", "json", "-m", "fake/echo", "-d", "colors", "-e", "high", "-t", "0.2", "--local", "--no-open", "-o", json_path], StringIO.new, StringIO.new, StringIO.new, kernel).execute!
+    end
+
+    after { FileUtils.remove_entry(dir) }
+
+    it "renders the saved run without calling a model" do
+      allow(configuration).to receive(:runtime).and_return(render_runtime)
+      run_cli
+      expect(stderr.string).to include("HTML report written to")
+      expect(File.read(html_path)).to include("<!doctype html>", "clear/001", "clear/002", "(high, t=0.2)", ".standings-settings { color: var(--text);")
+      expect(render_runtime).not_to have_received(:setup!)
     end
   end
 

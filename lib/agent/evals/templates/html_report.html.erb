@@ -49,16 +49,30 @@
         <% if standings[:ranked].empty? %>
           <p class="muted">No fully covered contenders to plot.</p>
         <% else %>
-          <div class="chart" aria-label="Model standings, worst to best">
-            <% standings[:ranked].each do |entry| %>
-              <% provider, model = model_parts(entry[:model]) %>
-              <% score = ranking_value(entry).to_f %>
-              <div class="bar-row">
-                <span><span class="provider"><%= provider %></span>/<span class="model-id"><%= model %></span><small class="settings">Effort <%= effort_label(entry[:model]) %> · Temperature <%= temperature_label(entry[:model]) %></small></span>
-                <div class="track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<%= (score * 100).round(1) %>"><i style="width:<%= (score * 100).clamp(0, 100) %>%"></i></div>
-                <b><%= percent(score) %></b>
-              </div>
-            <% end %>
+          <div class="scroll">
+            <table class="sortable standings-table" aria-label="Model standings, initially ordered highest score first">
+              <thead>
+                <tr>
+                  <th><span>Provider</span><span>(vendor)</span></th>
+                  <th><span>Model</span><span>(ID and settings)</span></th>
+                  <th><span>Weighted</span><span>score</span></th>
+                  <th><span>Primary score</span><span>(<%= escape(primary_metric) %>)</span></th>
+                  <th class="standings-bar"><span>Score</span><span>bar</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <% standings[:ranked].reverse_each do |entry| %>
+                  <% provider, model = model_parts(entry[:model]) %>
+                  <% ranking = ranking_value(entry).to_f %>
+                  <% weighted_label = weighted_score ? percent(ranking_value(entry)) : "—" %>
+                  <tr>
+                    <td><span class="provider"><%= provider %></span></td><td><span class="model-id"><%= model %></span> <span class="standings-settings">(<%= effort_label(entry[:model]) %>, t=<%= temperature_label(entry[:model]) %>)</span></td>
+                    <td><%= weighted_label %></td><td><%= percent(entry[:row][primary_metric]) %></td>
+                    <td class="standings-bar"><div class="track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<%= (ranking * 100).round(1) %>"><i style="width:<%= (ranking * 100).clamp(0, 100) %>%"></i></div></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
           </div>
         <% end %>
 
@@ -67,9 +81,9 @@
           <table class="sortable">
             <thead><tr><th>Provider</th><th>Model</th><th>Effort</th><th>Temperature</th><th>Scored</th><th>Weighted score</th><th>Errors</th><th>Cost</th></tr></thead>
             <tbody>
-              <% standings[:entries].sort_by { [it[:successful], ranking_value(it) || -1] }.each do |entry| %>
+              <% standings[:entries].sort_by { [ranking_value(it).nil? ? 1 : 0, -(ranking_value(it) || 0), -it[:successful], it[:errors]] }.each do |entry| %>
                 <% provider, model = model_parts(entry[:model]) %>
-                <% score = entry[:complete] ? percent(ranking_value(entry)) : "Not rankable" %>
+                <% score = entry[:complete] && ranking_value(entry) ? percent(ranking_value(entry)) : "Not rankable" %>
                 <tr>
                   <td><span class="provider"><%= provider %></span></td><td><span class="model-id"><%= model %></span></td>
                   <td><%= effort_label(entry[:model]) %></td><td><%= temperature_label(entry[:model]) %></td>

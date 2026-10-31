@@ -72,8 +72,8 @@ module Agent
             desc:    "Also print every experiment by score, with its cost and its tracker's link"
           subclass.option :format,
             default: "tui",
-            values:  %w[tui html],
-            desc:    "Report format: tui for the terminal, html for a standalone report file"
+            values:  %w[tui html json],
+            desc:    "Report format: tui for the terminal, html or json for a saved report"
           subclass.option :local,
             type:    :boolean,
             default: false,
@@ -249,17 +249,18 @@ module Agent
         # the scores; then says where the warnings went, if any, and opens the
         # best-scoring experiment.
         #
-        # TUI reports keep their existing terminal and -o behavior. HTML
-        # reports are standalone files, defaulting to log/<command>.<time>.html.
+        # TUI reports keep their existing terminal and -o behavior. HTML and
+        # JSON reports are saved artifacts, defaulting under log/.
         #
         # @param summaries [Array<Experiment::Summary>]
         # @param output [String, nil] what -o was given: nil, "-", "" for the default file, or a path
         # @param open [Boolean]
         # @param scores [Boolean] also print every experiment by score
-        # @param format [String] `tui` or `html`
+        # @param format [String] `tui`, `html` or `json`
         # @return [void]
         def report(summaries, output:, open:, scores: false, format: "tui", &details)
           return html_report(summaries, output:, open:) if format == "html"
+          return json_report(summaries, output:) if format == "json"
 
           path = invocation.report_path(output)
           if path
@@ -279,6 +280,26 @@ module Agent
           save_warnings
           url = summaries.max_by { it.score || -1 }&.permalink
           status_box(:warning, "could not open #{url}", stream: err) if open && url && !configuration.runtime.browse(url)
+        end
+
+        # Saves a reusable, self-contained JSON snapshot of the completed run.
+        # A later `agent-evals render` turns it into HTML without model calls.
+        #
+        # @param summaries [Array<Experiment::Summary>]
+        # @param output [String, nil]
+        # @return [void]
+        def json_report(summaries, output:)
+          path = if output == "-"
+                   nil
+                 elsif output.nil? || output.empty?
+                   invocation.report_path("").sub(/\.log\z/, ".json")
+                 else
+                   invocation.report_path(output)
+                 end
+          document = ReportJson.dump(summaries, metrics:, weighted_score: @weighted)
+          path ? File.write(path, document) : out.write(document)
+          status_box(:success, "JSON report written to #{relative(path)}", stream: err) if path
+          save_warnings
         end
 
         # Writes the standalone HTML report without printing a terminal table.

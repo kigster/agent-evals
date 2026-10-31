@@ -218,7 +218,10 @@ module Agent
 
       # @param value [Numeric]
       # @return [String]
-      def money(value) = format("$%.4f", value.to_f)
+      def money(value)
+        cents = (value.to_s.to_r * 100).ceil
+        format("$%<dollars>d.%<cents>02d", dollars: cents / 100, cents: cents % 100)
+      end
 
       # @param value [Object]
       # @return [String]

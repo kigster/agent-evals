@@ -4,7 +4,7 @@ module Agent
   module Evals
     module CLI
       # Several models at one setting, side by side: one experiment each,
-      # with either the terminal leaderboard or a full HTML report.
+      # with either a terminal leaderboard or a saved HTML/JSON report.
       class Compare < ModelCommand
         desc "Run every case against several models and report the results"
 
