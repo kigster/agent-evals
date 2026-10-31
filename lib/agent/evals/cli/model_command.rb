@@ -360,7 +360,7 @@ module Agent
           end
           best = best_value(groups.map { [it[:value], it[:usage].cost_usd, it[:errors]] })
           table(rows,
-            header:    ["model", "effort", "temp", *("weighted_score" if @weighted), primary.name, "errors", "tok_in", "tok_out", "cost"],
+            header:    ["model", "effort", "temp", *("wscore" if @weighted), primary.name, "errors", "tok_in", "tok_out", "cost"],
             highlight: [best].compact,
             fill:      0)
           value_line(" overall (#{contender_label(groups[best][:first])})", groups[best][:value], groups[best][:usage].cost_usd) if best
@@ -409,16 +409,17 @@ module Agent
         end
 
         def weighted_line(label, value)
-          out.puts "best weighted_score#{label}: #{format("%.1f%%", value * 100)}, by the weights in weighted_score"
+          out.puts "best wscore#{label}: #{format("%.1f%%", value * 100)}, by the weights in weighted_score"
         end
 
         # Every experiment by its mean score, best first, with its cost and its
         # Braintrust page. URLs are never wrapped, so they stay clickable.
         def scores(summaries)
+          weighted = weighted_scores(summaries)
           rows = summaries.sort_by { -(it.score || -1) }.map do |s|
-            [s.model.id, s.model.effort || "default", s.dataset, percent(s.score), dollars(s.usage.cost_usd), s.permalink || "-"]
+            [s.model.id, s.model.effort || "default", s.dataset, percent(s.score), *(percent(weighted[s]) if @weighted), dollars(s.usage.cost_usd), s.permalink || "-"]
           end
-          table(rows, header: %w[model effort dataset score cost url], fill: 0)
+          table(rows, header: ["model", "effort", "dataset", "score", *("wscore" if @weighted), "cost", "url"], fill: 0)
         end
 
         # The best value in each dataset's block of the leaderboard.
@@ -446,7 +447,7 @@ module Agent
           end
           best = best_per_dataset(ranked)
           table(rows,
-            header:    ["dataset", "model", "effort", "temp", *("weighted_score" if @weighted), *metrics.map(&:name),
+            header:    ["dataset", "model", "effort", "temp", *("wscore" if @weighted), *metrics.map(&:name),
                         "errors", "time", "tok_in", "tok_out", "cost"],
             highlight: best)
           best.each do |index|
@@ -465,7 +466,7 @@ module Agent
         # @return [Array<Array(String, String)>] the metrics' descriptions, then the gem's columns
         def glossary
           described = metrics.map { [it.name, it.description.to_s.empty? ? "(no description)" : it.description] } + GLOSSARY.to_a
-          @weighted ? [["weighted_score", @weighted.description], *described] : described
+          @weighted ? [["wscore", @weighted.description], *described] : described
         end
       end
     end

@@ -23,11 +23,19 @@ RSpec.describe Agent::Evals::WeightedScore do
     end
 
     context "with errors" do
-      let(:weights) { { "errors" => -1 } }
+      let(:weights) { { "score" => 9, "errors" => -1 } }
 
-      it "halves for each one, so that a single error counts" do
-        expect(weighted.call([0, 1, 2].map { { "errors" => it } })).to eq([1.0, 0.5, 0.25])
+      def scored(*errors) = weighted.call(errors.map { { "score" => 1.0, "errors" => it } })
+
+      it "takes 20 points for one, 25 for two, 30 for three" do
+        expect(scored(0, 1, 2, 3)).to match([1.0, be_within(1e-9).of(0.8), be_within(1e-9).of(0.75), be_within(1e-9).of(0.7)])
       end
+
+      it("stops at 0") { expect(scored(40)).to eq([0.0]) }
+    end
+
+    context "with errors in a row but no weight on them" do
+      it { expect(weighted.call([{ "score" => 1.0, "errors" => 3 }])).to eq([1.0]) }
     end
 
     context "with cost" do

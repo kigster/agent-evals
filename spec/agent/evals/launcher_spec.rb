@@ -365,7 +365,7 @@ RSpec.describe Agent::Evals::Launcher do
     after { FileUtils.remove_entry(dir) }
 
     it "adds the column, the winners and the formula" do
-      expect(run_cli).to include("weighted_score", "best weighted_score [colors]", "best weighted_score overall", "Σ(|weight| × goodness)")
+      expect(run_cli).to include("wscore", "best wscore [colors]", "best wscore overall", "Σ(|weight| × goodness)")
     end
 
     context "when a weight names tokens" do
@@ -382,7 +382,7 @@ RSpec.describe Agent::Evals::Launcher do
   context "with a lineup that sets no weights" do
     let(:argv) { %w[compare --local --no-open -m fake/echo] }
 
-    it("leaves the leaderboard as it was") { expect(run_cli).not_to include("weighted_score") }
+    it("leaves the leaderboard as it was") { expect(run_cli).not_to include("wscore") }
   end
 
   context "with run and another lineup" do

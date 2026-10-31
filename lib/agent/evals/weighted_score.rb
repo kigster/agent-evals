@@ -15,14 +15,16 @@ module Agent
     #   weighted_score = Σ(|weight| × goodness) / Σ|weight|
     #
     # Goodness runs from 0 to 1. Metrics are used as they are, or as 1 - value
-    # under a negative weight. Each error halves the errors column's goodness, so
-    # that a single one costs half its weight: a failed case has no scores, so
-    # no other column notices it, and as a share of the cases it would barely
-    # register. {MAGNITUDES}
+    # under a negative weight. {MAGNITUDES}
     # are placed on a log scale between the lowest and highest in the group, so
     # that each doubling costs the same: on a linear scale, one model a hundred
     # times the price would squash all the others together. Where the whole
     # group is equal, each gets 1.
+    #
+    # Errors come off the total, when weighted: 20 points for one, 25 for two, 30
+    # for three, and so on, down to 0. A failed case has no scores, so no other
+    # column notices it, and a single failure must show. A clean contender gets
+    # the whole of the weight on errors.
     #
     # Magnitudes are relative, so a weighted score compares within one group
     # only: another model in the lineup moves everyone's.
@@ -34,8 +36,9 @@ module Agent
       # setting, not a result, and tokens are already in the cost.
       COLUMNS = ["score", "errors", *MAGNITUDES].freeze
 
-      # What each error multiplies the errors column's goodness by.
-      ERROR_FACTOR = 0.5
+      # What errors take off the total: {ERROR_BASE} + {ERROR_STEP} per error.
+      ERROR_BASE = 0.15
+      ERROR_STEP = 0.05
 
       attr_reader :weights
 
@@ -67,22 +70,29 @@ module Agent
         rows.map do |row|
           next if present.empty? || present.keys.any? { row[it].nil? }
 
-          present.sum { |name, weight| weight.abs * goodness(name, row[name], weight, rows) } / total
+          score = present.sum { |name, weight| weight.abs * goodness(name, row[name], weight, rows) } / total
+          [score - penalty(row["errors"], present), 0.0].max
         end
       end
 
       # @return [String] the formula, with this lineup's weights, for the glossary
       def description
         "Σ(|weight| × goodness) / Σ|weight|, from 0% to 100%, and higher is better. A negative weight means that column is better low. " \
-          "Each error halves the errors column. " \
-          "#{MAGNITUDES.join(", ")} are on a log scale within the group, so compare weighted_score within one table only. " \
+          "Errors come off the total: 20 points for one, then 5 more for each further error. " \
+          "#{MAGNITUDES.join(", ")} are on a log scale within the group, so compare wscore within one table only. " \
           "Weights: #{weights.map { |name, weight| "#{name} #{weight}" }.join(", ")}."
       end
 
       private
 
+      def penalty(errors, present)
+        return 0.0 unless present.key?("errors") && errors.positive?
+
+        ERROR_BASE + (ERROR_STEP * errors)
+      end
+
       def goodness(name, value, weight, rows)
-        return ERROR_FACTOR**value if name == "errors"
+        return 1.0 if name == "errors"
 
         position = MAGNITUDES.include?(name) ? position(value, rows.filter_map { it[name] }) : value.to_f
         return 1.0 if position.nil?
