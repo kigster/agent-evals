@@ -12,7 +12,7 @@ module Agent
 
         def call(input:, output: nil, **)
           source = File.read(input)
-          report = ReportJson.load(source, providers: configuration.providers)
+          report = Agent::Evals::Render::Reports::JSON.decode(source, providers: configuration.providers)
           path = if output == "-"
                    nil
                  elsif output.nil? || output.empty?
@@ -20,8 +20,16 @@ module Agent
                  else
                    invocation.report_path(output)
                  end
-          document = HtmlReport.render(report.summaries, metrics: report.metrics, weighted_score: report.weighted_score)
-          path ? File.write(path, document) : out.write(document)
+          pipeline = Agent::Evals::Render::Reports::Pipeline.new(providers: configuration.providers,
+            runtime: configuration.runtime,
+            destination: File.dirname(path || input),
+            temp_dir: File.dirname(input),
+            project: configuration.name)
+          document = pipeline.write_html(summaries: report.summaries,
+            metrics: report.metrics,
+            weighted_score: report.weighted_score,
+            path:)
+          out.write(document) unless path
           status_box(:success, "HTML report written to #{relative(path)}", stream: err) if path
         end
 

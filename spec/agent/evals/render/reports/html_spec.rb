@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.describe Agent::Evals::HtmlReport do
+RSpec.describe Agent::Evals::Render::Reports::HTML do
   describe "the report template" do
     let(:template_paths) do
       %w[

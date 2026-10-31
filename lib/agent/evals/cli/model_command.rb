@@ -71,9 +71,19 @@ module Agent
             default: false,
             desc:    "Also print every experiment by score, with its cost and its tracker's link"
           subclass.option :format,
-            default: "tui",
-            values:  %w[tui html json],
-            desc:    "Report format: tui for the terminal, html or json for a saved report"
+            values: %w[tui html json],
+            desc:   "Override the configured display: tui, html or json"
+          subclass.option :display,
+            values: %w[none tui browser],
+            desc:   "Override results.display from the lineup"
+          subclass.option :autosave,
+            type:    :boolean,
+            default: nil,
+            desc:    "Save a JSON snapshot regardless of results.autosave"
+          subclass.option :destination,
+            desc: "Override results.destination"
+          subclass.option :temp_dir,
+            desc: "Override results.temp_dir"
           subclass.option :local,
             type:    :boolean,
             default: false,
@@ -103,6 +113,7 @@ module Agent
         # @return [WeightedScore, nil] nil when the file sets none
         # @raise [Error] on a bad weight
         def weigh(config)
+          config.results # validate output settings before model calls start
           weights = config.score_weights
           @weighted = weights.empty? ? nil : WeightedScore.new(weights, metrics: metrics.map(&:name))
         end
@@ -121,6 +132,30 @@ module Agent
             parallelism: Integer(options[:parallelism] || config.defaults["parallelism"]),
             trackers:    trackers_for(config, options)
           )
+        end
+
+        # Captures the parsed flags and the settings that actually reached the
+        # experiments. The former preserves the invocation; the latter records
+        # defaults and expanded case/model selections that were implicit.
+        def serialize_run_options(config:, contenders:, datasets:, runs:, models:, dataset:, options:)
+          {
+            command:   invocation.action.to_s,
+            cli:       { models:, dataset:, **options },
+            effective: {
+              project:       options[:project] || config.project || configuration.project || configuration.name,
+              request_types: config.request_types.map(&:to_s),
+              datasets:,
+              cases:         runs.group_by(&:dataset).transform_values { |dataset_runs| dataset_runs.flat_map { it.cases.map(&:id) }.uniq },
+              contenders:    contenders.map do |contender|
+                { model: contender.model, provider: providers.for(contender).name, effort: contender.effort,
+                  temperature: contender.temperature, max_tokens: contender.max_tokens }
+              end,
+              defaults:      config.defaults,
+              parallelism:   Integer(options[:parallelism] || config.defaults["parallelism"]),
+              concurrency:   concurrency(options),
+              tracker:       options[:local] ? "none" : remote_tracker(config, options)&.tracker_name
+            }
+          }
         end
 
         # The local JSON log, always, then the one remote tracker if any,
@@ -249,8 +284,8 @@ module Agent
         # the scores; then says where the warnings went, if any, and opens the
         # best-scoring experiment.
         #
-        # TUI reports keep their existing terminal and -o behavior. HTML and
-        # JSON reports are saved artifacts, defaulting under log/.
+        # Saves or renders through {Render::Reports::Pipeline}; the configured
+        # display and autosave policy are independent of model execution.
         #
         # @param summaries [Array<Experiment::Summary>]
         # @param output [String, nil] what -o was given: nil, "-", "" for the default file, or a path
@@ -258,72 +293,95 @@ module Agent
         # @param scores [Boolean] also print every experiment by score
         # @param format [String] `tui`, `html` or `json`
         # @return [void]
-        def report(summaries, output:, open:, scores: false, format: "tui", &details)
-          return html_report(summaries, output:, open:) if format == "html"
-          return json_report(summaries, output:) if format == "json"
+        def report(summaries, config:, options:, run_options:, output:, open:, scores: false, format: nil, &details)
+          results = effective_results(config, options)
+          results[:display] = { "tui" => "tui", "none" => "none", "html" => "browser", "json" => "none" }.fetch(format, results[:display]) if format
+          snapshot_options = run_options.merge(results:)
+          pipeline = render_pipeline(results, run_options)
 
-          path = invocation.report_path(output)
-          if path
-            File.open(path, "w") do |file|
-              report = Dry::CLI::UI::Report.new(file)
-              writing_to(report) do
-                details&.call
-                leaderboard(summaries, scores: scores)
-              end
-              report.puts "Closed at #{Time.now.strftime("%Y-%m-%d %H:%M:%S %z")}"
+          if format == "html"
+            if results[:autosave]
+              json_path = pipeline.save_json(summaries:, metrics:, weighted_score: @weighted, run_options: snapshot_options)
+              status_box(:success, "JSON results written to #{relative(json_path)}", stream: err)
             end
-          else
-            details&.call
+            path = report_output_path(output, "html")
+            document = pipeline.write_html(summaries:, metrics:, weighted_score: @weighted, path:)
+            path ? status_box(:success, "HTML report written to #{relative(path)}", stream: err) : out.write(document)
+            save_warnings
+            url = summaries.max_by { it.score || -1 }&.permalink
+            status_box(:warning, "could not open #{url}", stream: err) if open && url && !configuration.runtime.browse(url)
+            return
           end
-          leaderboard(summaries, scores: scores)
+          if format == "json"
+            if output.nil? || output.empty?
+              path = pipeline.save_json(summaries:, metrics:, weighted_score: @weighted, run_options: snapshot_options)
+              status_box(:success, "JSON report written to #{relative(path)}", stream: err)
+            else
+              path = report_output_path(output, "json")
+              document = pipeline.write_json(summaries:, metrics:, weighted_score: @weighted, run_options: snapshot_options, path:)
+              path ? status_box(:success, "JSON report written to #{relative(path)}", stream: err) : out.write(document)
+            end
+            save_warnings
+            return
+          end
+
+          result = pipeline.call(summaries:,
+            metrics:,
+            weighted_score: @weighted,
+            run_options: snapshot_options,
+            autosave: results[:autosave],
+            display: results[:display],
+            open:) do |shown|
+            terminal_report(shown, output:, open:, scores:) { details&.call(shown) }
+          end
+          if result.json_path
+            status_box(:success, "JSON results written to #{relative(result.json_path)}", stream: err)
+          end
+          if result.html_path
+            status_box(:success, "HTML report written to #{relative(result.html_path)}", stream: err)
+            status_box(:warning, "could not open #{result.html_path}", stream: err) if open && !result.browser_opened
+          end
+          save_warnings unless results[:display] == "tui"
+        end
+
+        def terminal_report(summaries, output:, open:, scores:, &details)
+          terminal = Agent::Evals::Render::Reports::Terminal.new(invocation:, writing_to: method(:writing_to), leaderboard: method(:leaderboard))
+          path = terminal.call(summaries:, output:, scores:, &details)
           status_box(:info, "Report written to #{relative(path)}", stream: err) if path
           save_warnings
           url = summaries.max_by { it.score || -1 }&.permalink
           status_box(:warning, "could not open #{url}", stream: err) if open && url && !configuration.runtime.browse(url)
         end
 
-        # Saves a reusable, self-contained JSON snapshot of the completed run.
-        # A later `agent-evals render` turns it into HTML without model calls.
-        #
-        # @param summaries [Array<Experiment::Summary>]
-        # @param output [String, nil]
-        # @return [void]
-        def json_report(summaries, output:)
-          path = if output == "-"
-                   nil
-                 elsif output.nil? || output.empty?
-                   invocation.report_path("").sub(/\.log\z/, ".json")
-                 else
-                   invocation.report_path(output)
-                 end
-          document = ReportJson.dump(summaries, metrics:, weighted_score: @weighted)
-          path ? File.write(path, document) : out.write(document)
-          status_box(:success, "JSON report written to #{relative(path)}", stream: err) if path
-          save_warnings
+        def effective_results(config, options)
+          configured = config.results
+          {
+            autosave:    options[:autosave].nil? ? configured.autosave : options[:autosave],
+            destination: File.expand_path(options[:destination] || configured.destination),
+            temp_dir:    File.expand_path(options[:temp_dir] || configured.temp_dir),
+            display:     options[:display] || configured.display_mode
+          }
         end
 
-        # Writes the standalone HTML report without printing a terminal table.
-        # A dash writes the HTML document to stdout; omitted -o picks a timestamped
-        # file under log/.
-        #
-        # @param summaries [Array<Experiment::Summary>]
-        # @param output [String, nil]
-        # @param open [Boolean]
-        # @return [void]
-        def html_report(summaries, output:, open:)
-          path = if output == "-"
-                   nil
-                 elsif output.nil? || output.empty?
-                   invocation.report_path("").sub(/\.log\z/, ".html")
+        def render_pipeline(results, run_options)
+          project = run_options.dig(:effective, :project) || run_options.dig("effective", "project") || configuration.name
+          project = project.to_s.downcase.gsub(/[^a-z0-9]+/, "-").sub(/\A-/, "").sub(/-+\z/, "")
+          Agent::Evals::Render::Reports::Pipeline.new(providers:,
+            runtime: configuration.runtime,
+            destination: results[:destination],
+            temp_dir: results[:temp_dir],
+            project:)
+        end
+
+        def report_output_path(output, extension)
+          return nil if output == "-"
+
+          path = if output.nil? || output.empty?
+                   invocation.report_path("")
                  else
                    invocation.report_path(output)
                  end
-          document = HtmlReport.render(summaries, metrics:, weighted_score: @weighted)
-          path ? File.write(path, document) : out.write(document)
-          status_box(:success, "HTML report written to #{relative(path)}", stream: err) if path
-          save_warnings
-          url = summaries.max_by { it.score || -1 }&.permalink
-          status_box(:warning, "could not open #{url}", stream: err) if open && url && !configuration.runtime.browse(url)
+          path.sub(/\.log\z/, ".#{extension}")
         end
 
         # Saves {#warnings}, if there are any, to

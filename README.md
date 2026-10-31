@@ -341,6 +341,12 @@ defaults:
   max_tokens: 8192           # covers the reasoning tokens a high effort spends
   parallelism: 4             # cases in flight per experiment; the default for -p
 
+results:
+  autosave: true              # save every completed run as JSON
+  destination: ./evals/results/
+  temp_dir: ./tmp              # temporary JSON when autosave is false
+  display: browser            # none, tui or browser
+
 vendors:                     # the OpenRouter list; every entry takes a prompt
   anthropic:
     - model: claude-fable-5
@@ -415,7 +421,7 @@ agent-evals run -m openai/gpt-4.1-mini         # one model, every dataset, per-c
 agent-evals run -m anthropic/claude-haiku-5.5 -e low -d vague -c vague/00
 agent-evals run --local -o                     # no remote tracker; the breakdowns go to log/
 agent-evals compare                            # everything the lineup lists, leaderboard only
-agent-evals compare --format html              # standalone report under log/
+agent-evals compare                         # uses results.display
 agent-evals compare --format html -o report.html
 agent-evals compare --format json -o results.json # save every result for later rendering
 agent-evals render results.json -o report.html # render saved results; no model calls
@@ -437,9 +443,9 @@ agent-evals completion zsh                     # shell completion (bash too)
 - `verify` reports empty inputs and missing or unparsable `expected.json`, then runs `adapter.verify(dataset)` and `scorer.verify`.
 - `run` and `compare` run one experiment per model and dataset, as many at once as the machine has CPUs. `-j N` / `--concurrency N` sets another limit, and `-j 0` starts them all together. `-p` is separate: the cases in flight inside each experiment.
 
-Flags shared by `run` and `compare`: `-m/--models`, `-d/--dataset` (every dataset when omitted), `-c/--case`, `-e/--effort`, `-t/--temperature`, `--max-tokens`, `-p/--parallelism`, `-j/--concurrency`, `-C/--config FILE`, `--project NAME`, `--tracker NAME`, `--local`, `--no-open`, `-n/--dry-run`, `-o/--output [FILE]`, `--format tui|html|json`. TUI is the default; HTML and JSON write standalone report artifacts to `log/` unless `-o` names a path (`-o -` writes the selected format to stdout). Use `agent-evals render results.json` to regenerate the HTML report later without repeating model calls. `-l` and `-L` are reserved for logging and not yet implemented.
+Flags shared by `run` and `compare`: `-m/--models`, `-d/--dataset` (every dataset when omitted), `-c/--case`, `-e/--effort`, `-t/--temperature`, `--max-tokens`, `-p/--parallelism`, `-j/--concurrency`, `-C/--config FILE`, `--project NAME`, `--tracker NAME`, `--local`, `--no-open`, `-n/--dry-run`, `-o/--output [FILE]`, `--format tui|html|json`, `--display none|tui|browser`, `--autosave/--no-autosave`, `--destination DIR` and `--temp-dir DIR`. Explicit flags override the config. Autosaved run snapshots are JSON; browser display renders timestamped HTML, CSS and JS files beside that JSON. When autosave is off, TUI and browser rendering use a temporary JSON snapshot under `temp_dir`. Use `agent-evals render results.json` to regenerate HTML from saved results without repeating model calls. `-l` and `-L` are reserved for logging and not yet implemented.
 
-**Reading the output.** TUI is the default. It has one column per metric the scorer declares, ranked by the `primary` one, with a glossary built from each metric's `description`. `--format html` writes a standalone report with global and dataset standings, sortable tables, case inputs, expected answers, scores and diagnostics. Provider names and model IDs use separate colors; the hero standings show effort and temperature next to the model. `--format json` saves a self-contained run snapshot; `render` turns it into HTML later. Progress bars and warnings go to STDERR, and anything a library prints while the bars redraw is saved to `log/<command>.warnings.<stamp>.log` instead of garbling the screen.
+**Reading the output.** `results.display` selects no report, a terminal leaderboard, or a browser report. The TUI has one column per metric the scorer declares, ranked by the `primary` one, with a glossary built from each metric's `description`. Browser reports show global and dataset standings, sortable tables, case inputs, expected answers, scores and diagnostics. Provider names and model IDs use separate colors; the hero standings show effort and temperature next to the model. Every JSON snapshot records both parsed CLI options and effective run settings, including expanded model settings and selected cases. `render` turns a saved snapshot into HTML later. Progress bars and warnings go to STDERR, and anything a library prints while the bars redraw is saved to `log/<command>.warnings.<stamp>.log` instead of garbling the screen.
 
 ## Trackers
 

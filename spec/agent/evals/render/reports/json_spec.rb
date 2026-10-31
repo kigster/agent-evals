@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-RSpec.describe Agent::Evals::ReportJson do
+RSpec.describe Agent::Evals::Render::Reports::JSON do
   describe ".dump and .load" do
     let(:provider) { Agent::Evals.configuration.providers.for("fake/echo") }
     let(:model) { Agent::Evals::Model.new(id: "fake/echo", provider:, settings: { effort: "low", temperature: 0.2 }) }

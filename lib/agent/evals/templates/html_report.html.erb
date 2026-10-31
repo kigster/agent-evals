@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title><%= escape(report_title) %></title>
-    <style><%= stylesheet %></style>
+    <%= stylesheet_tag %>
   </head>
   <body>
     <main>
@@ -159,6 +159,6 @@
         </details>
       <% end %>
     </main>
-    <script><%= sorting_script %></script>
+    <%= script_tag %>
   </body>
 </html>
