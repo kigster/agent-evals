@@ -1,0 +1,193 @@
+:root {
+  color-scheme: light dark;
+  --bg: #0d1117;
+  --panel: #161b22;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --line: #30363d;
+  --blue: #58a6ff;
+  --green: #3fb950;
+  --orange: #ff9f43;
+  --red: #f85149;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, sans-serif;
+}
+
+main {
+  max-width: 1520px;
+  margin: auto;
+  padding: 36px 28px 80px;
+}
+
+h1 { margin: 0; font-size: 28px; }
+h2 { margin: 0 0 8px; font-size: 20px; }
+h3 { margin: 22px 0 10px; font-size: 15px; }
+h4 { margin: 14px 0 6px; }
+.muted { color: var(--muted); }
+
+section,
+.dataset {
+  margin: 16px 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.health {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.stat {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+}
+
+.stat b { display: block; font-size: 23px; }
+.stat span,
+.eyebrow { color: var(--muted); }
+
+.notice {
+  padding: 12px;
+  border-left: 4px solid var(--red);
+  background: #f8514918;
+}
+
+.leader {
+  display: grid;
+  gap: 5px;
+  margin: 16px 0;
+  padding: 15px;
+  border: 1px solid var(--green);
+  border-radius: 8px;
+  background: #3fb95012;
+}
+
+.leader.none { border-color: var(--red); background: #f8514912; }
+.leader strong { font-size: 20px; }
+.eyebrow { font-size: 11px; letter-spacing: .08em; }
+.provider { color: var(--green); font-weight: 600; }
+.model-id { color: var(--orange); font-weight: 700; }
+.settings { display: block; color: var(--muted); font-size: 12px; }
+
+.bar-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 2fr) 4fr 70px;
+  gap: 12px;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--line);
+}
+
+.track i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue), var(--green));
+}
+
+table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 9px;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+th { color: var(--muted); font-weight: 500; }
+.sortable th { cursor: pointer; user-select: none; }
+.sortable th::after { color: var(--muted); font-size: 11px; content: " ↕"; }
+.sortable th[aria-sort="ascending"]::after { content: " ↑"; }
+.sortable th[aria-sort="descending"]::after { content: " ↓"; }
+.sortable th:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+
+.scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+th:first-child,
+td:first-child { white-space: nowrap; }
+.dataset { overflow: hidden; padding: 0; }
+
+.dataset > summary,
+.case > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.dataset > summary::-webkit-details-marker,
+.case > summary::-webkit-details-marker { display: none; }
+.dataset > summary span,
+.case > summary span { color: var(--muted); }
+.dataset-content { padding: 0 16px 18px; }
+
+.case {
+  overflow: hidden;
+  margin: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.case > summary { padding: 10px 12px; }
+.case-content { padding: 0 12px 12px; }
+
+.case-content pre {
+  max-height: 360px;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 6px;
+  background: #0d1117;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+pre { font: 12px/1.5 ui-monospace, monospace; }
+.case-content details { margin: 8px 0; }
+.case-content details > summary { color: var(--blue); cursor: pointer; }
+
+@media (max-width: 900px) {
+  main { padding: 24px 16px 60px; }
+}
+
+@media (max-width: 700px) {
+  main { padding: 18px 10px 40px; }
+  section { padding: 14px; }
+  .dataset-content { padding: 0 10px 12px; }
+  .health { grid-template-columns: 1fr; }
+  .bar-row { grid-template-columns: 1fr 2fr 60px; }
+  .dataset > summary { display: block; }
+  .dataset > summary span { display: block; }
+  table { min-width: 900px; }
+}

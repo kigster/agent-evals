@@ -216,8 +216,8 @@ RSpec.describe Agent::Evals::Launcher do
         '<th>Provider</th><th>Model</th><th>Effort</th><th>Temperature</th>',
         'table class="sortable"',
         'aria-sort',
-        'max-width:1520px',
-        'overscroll-behavior-inline:contain',
+        'max-width: 1520px',
+        'overscroll-behavior-inline: contain',
         'class="provider">fake',
         'class="model-id">echo'
       )
