@@ -346,15 +346,22 @@ module Agent
 
         def temperature_cell(summary) = summary.model.temperature.nil? ? "default" : summary.model.temperature
 
-        # One table per dataset of tokens, cost and the mean primary metric per
-        # contender.
+        # One table per case variant, over every dataset, of tokens, cost and the
+        # mean primary metric per contender, so the variants can be compared.
         #
-        # @return [Proc] prints the conclusions over every dataset, for after everything else
+        # @return [Proc, nil] prints the conclusions over every dataset, for after
+        #   everything else; nil over a single dataset
         def totals(summaries)
-          summaries.group_by(&:dataset).sort_by(&:first).each do |dataset, group|
-            out.puts "[#{dataset}]"
-            contender_table(contender_groups(group))
+          variants = summaries.flat_map { |summary| summary.results.map { it.case.variant } }.uniq.sort
+          several_datasets = summaries.map(&:dataset).uniq.size > 1
+          if several_datasets || variants.size > 1
+            variants.each do |variant|
+              out.puts "[#{variant}]"
+              contender_table(contender_groups(summaries.map { it.for_variant(variant, metrics) }))
+            end
           end
+          return unless several_datasets
+
           groups = contender_groups(summaries)
           best = best_contender(groups)
           winner = groups.find { it[:weighted] && it[:errors].zero? }
@@ -488,7 +495,7 @@ module Agent
         def model_colors = @model_colors ||= ModelColors.new
 
         # One row per experiment, best primary metric first, or best wscore when the
-        # file sets weights; the glossary; the totals per dataset, over several; with
+        # file sets weights; the glossary; the totals per case variant; with
         # scores, every experiment by score; and, last, the winners.
         def leaderboard(summaries, scores: false)
           weighted = weighted_scores(summaries)
@@ -505,7 +512,7 @@ module Agent
                         "errors", "time", "tok_in", "tok_out", "cost"],
             highlight: best)
           table(glossary, header: %w[Term Description], fill: 1, wrap: true)
-          overall = totals(summaries) if summaries.map(&:dataset).uniq.size > 1
+          overall = totals(summaries)
           scores(summaries) if scores
           winners("Best value: the cheapest within #{(VALUE_MARGIN * 100).round} points of the best #{primary.name}",
             best.map { ranked[it] },

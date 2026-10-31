@@ -405,8 +405,8 @@ RSpec.describe Agent::Evals::Launcher do
   context "with compare over two datasets, by default" do
     let(:argv) { %w[compare --local --no-open -m fake/one] }
 
-    it "prints the contenders' totals for each dataset" do
-      expect(run_cli).to match(/^\[animals\]\n┌.*│ model .*^\[colors\]\n┌.*│ model /m)
+    it "prints the contenders' totals for each case variant" do
+      expect(run_cli).to match(/^\[clear\]\n┌.*│ model .*^\[vague\]\n┌.*│ model /m)
     end
 
     it "leaves out every experiment by score" do
@@ -418,6 +418,19 @@ RSpec.describe Agent::Evals::Launcher do
       expect(lines.last).to start_with("best value overall")
       expect(lines[-2]).to include("[colors]")
     end
+  end
+
+  context "with compare over one dataset's two variants" do
+    let(:argv) { %w[compare --local --no-open -m fake/one -d colors] }
+
+    it("still compares the variants") { expect(run_cli).to match(/^\[clear\]\n.*^\[vague\]\n/m) }
+    it("has no overall conclusions") { expect(run_cli).not_to include("best value overall") }
+  end
+
+  context "with one variant of one dataset" do
+    let(:argv) { %w[compare --local --no-open -m fake/one -d colors -c clear] }
+
+    it("leaves the leaderboard to say it") { expect(run_cli).not_to include("[clear]\n") }
   end
 
   context "with --scores" do
