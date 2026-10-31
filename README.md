@@ -1,6 +1,6 @@
 # Agent Evals (`agent-evals`)
 
-[![Gem Version](https://badge.fury.io/rb/agent-evals.svg)](https://rubygems.org/gems/agent-evals) [![CircleCI](https://dl.circleci.com/status-badge/img/gh/kigster/agent-evals/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/kigster/agent-evals/tree/main)
+[![Gem Version](https://badge.fury.io/rb/agent-evals.svg)](https://rubygems.org/gems/agent-evals) [![CircleCI](https://dl.circleci.com/status-badge/img/gh/kigster/agent-evals/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/kigster/agent-evals/tree/main) ![coverage](docs/badges/coverage-badge.svg)
 
 ______________________________________________________________________
 

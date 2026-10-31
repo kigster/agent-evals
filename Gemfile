@@ -22,5 +22,6 @@ group :development, :test do
   gem "rubocop-rake", "~> 0.7"
   gem "rubocop-rspec", "~> 3.10"
   gem "simplecov", "~> 1.3"
+  gem "coverage-badge"
   gem "yard", "~> 0.9"
 end
