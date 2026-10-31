@@ -208,8 +208,9 @@ module Agent
         def bars(runs, summaries, concurrency)
           ProgressBars.for(ui).run("Running #{runs.size} experiment#{"s" unless runs.size == 1}",
             concurrent: concurrency.zero? || concurrency) do |multi|
+            labels = ProgressBars.labels(runs)
             runs.each_with_index do |run, index|
-              multi.progress(run.name, total: run.cases.size) do |bar|
+              multi.progress(labels[index], total: run.cases.size) do |bar|
                 summaries[index] = run.run(on_case: -> { bar.advance })
               end
             end

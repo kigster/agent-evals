@@ -12,7 +12,9 @@ module Agent
       # - on a screen too short for every job, a finished row stays for
       #   {LINGER} seconds, since a short job would otherwise leave the screen
       #   before anyone saw it full: at two cases, its last frame is 50%;
-      # - labels padded to at least {LABEL_WIDTH} columns;
+      # - labels padded to at least {LABEL_WIDTH} columns, in the columns
+      #   {.labels} lays out, each model in a bright color of its own for the
+      #   whole run, chosen at random;
       # - each frame overwrites the last line by line, inside a synchronized
       #   update, rather than clearing the screen below and drawing it again,
       #   which flickers with many rows.
@@ -38,8 +40,29 @@ module Agent
         SYNC_START = "\e[?2026h"
         SYNC_END = "\e[?2026l"
 
+        # Stands between a label's fixed columns and its model.
+        MODEL_SEPARATOR = " | "
+
+        # What a model can be drawn in. More models than these share them.
+        MODEL_COLORS = %i[bright_red bright_green bright_yellow bright_blue bright_magenta bright_cyan bright_white].freeze
+
         # @param console [Dry::CLI::UI::Console] the command's ui, whose stream, clock and settings it draws with
         def self.for(console) = new(console.send(:err), clock: console.send(:clock), config: console.send(:config))
+
+        # One label per experiment, the dataset and the settings each padded to
+        # the widest of its column, so that every model starts in one column:
+        # `[01-bookkeeping-cfo]  effort=low t=0.2 | moonshotai/kimi-k3`.
+        #
+        # @param runs [Array<Experiment>]
+        # @return [Array<String>] in the order given
+        def self.labels(runs)
+          datasets = runs.map { "[#{it.dataset}]" }
+          dataset_width = datasets.map(&:length).max
+          settings_width = runs.map { it.model.label.length }.max
+          runs.zip(datasets).map do |run, dataset|
+            "#{dataset.ljust(dataset_width)}  #{run.model.label.ljust(settings_width)}#{MODEL_SEPARATOR}#{run.model.id}"
+          end
+        end
 
         private
 
@@ -48,7 +71,21 @@ module Agent
 
         def rows
           width = label_width
-          [headline(width), *visible.map { "#{INDENT}#{row(it, width - INDENT.length)}" }]
+          [headline(width), *visible.map { "#{INDENT}#{painted(row(it, width - INDENT.length))}" }]
+        end
+
+        # @param text [String] a job's row, whose label holds the width it was padded to
+        # @return [String] the row with its model in that model's color
+        def painted(text)
+          text.sub(/(?<=#{Regexp.escape(MODEL_SEPARATOR)})\S+/) { terminal.pastel.public_send(model_colors[it], it) }
+        end
+
+        # @return [Hash{String => Symbol}] each model's color, given when first drawn
+        def model_colors
+          @model_colors ||= begin
+            palette = MODEL_COLORS.shuffle
+            Hash.new { |colors, model| colors[model] = palette[colors.size % palette.size] }
+          end
         end
 
         # The running jobs and those just finished, in the order declared. The

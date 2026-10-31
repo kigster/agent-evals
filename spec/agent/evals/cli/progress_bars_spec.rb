@@ -20,6 +20,49 @@ RSpec.describe Agent::Evals::CLI::ProgressBars do
     expect(bars.send(:row, job, 40)).to match(%r{\Afake/one {33}.* 100%  3/3  in 1\.5s|fake/one +\S+ 100%  3/3  in 1\.5s})
   end
 
+  describe ".labels" do
+    let(:runs) do
+      [["01-bookkeeping-cfo", "moonshotai/kimi-k3", "effort=low t=0.2"], ["clear", "fake/one", "effort=default t=default"]].map do |dataset, id, label|
+        instance_double(Agent::Evals::Experiment, dataset: dataset, model: instance_double(Agent::Evals::Model, id: id, label: label))
+      end
+    end
+
+    it "pads the dataset and the settings, so every model starts in one column" do
+      expect(described_class.labels(runs)).to eq([
+                                                   "[01-bookkeeping-cfo]  effort=low t=0.2         | moonshotai/kimi-k3",
+                                                   "[clear]               effort=default t=default | fake/one"
+                                                 ])
+    end
+  end
+
+  describe "the model's color" do
+    let(:other) { Dry::CLI::UI::Widgets::Multi::Job.new("[b]  effort=low t=0.2 | fake/two", -> {}, Dry::CLI::UI::Widgets::Progress::Handle.new(3)) }
+    let(:job) { Dry::CLI::UI::Widgets::Multi::Job.new("[a]  effort=low t=0.2 | fake/one", -> {}, Dry::CLI::UI::Widgets::Progress::Handle.new(3)) }
+    let(:same) { Dry::CLI::UI::Widgets::Multi::Job.new("[b]  effort=low t=0.2 | fake/one", -> {}, Dry::CLI::UI::Widgets::Progress::Handle.new(3)) }
+
+    before do
+      allow(terminal).to receive(:pastel).and_return(Pastel.new(enabled: true))
+      [other, same].each do |added|
+        added.state = :running
+        added.started = 0.0
+        bars.instance_variable_get(:@jobs) << added
+      end
+    end
+
+    # The color each row draws its model in.
+    def colors = bars.send(:rows).drop(1).map { it[%r{\| (\e\[9\dm)fake/}, 1] }
+
+    it "is bright, the same on every row of a model, and differs between models" do
+      expect(colors).to all(match(/\e\[9[1-7]m/))
+      expect(colors[0]).to eq(colors[2])
+      expect(colors[0]).not_to eq(colors[1])
+    end
+
+    it "does not move the columns" do
+      expect(bars.send(:label_width)).to eq(42)
+    end
+  end
+
   it "pads labels to at least 40 columns, plus the indent" do
     expect(bars.send(:label_width)).to eq(42)
   end
