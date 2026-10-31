@@ -355,6 +355,36 @@ RSpec.describe Agent::Evals::Launcher do
     it { run_cli && expect(stderr.string).to(include("no provider serves")) }
   end
 
+  context "with a lineup that sets weights" do
+    let(:dir) { Dir.mktmpdir }
+    let(:lineup) { File.join(dir, "lineup.yml") }
+    let(:weights) { "field_accuracy: 0.7\n    cost: -0.2\n    time: -0.1\n    errors: -0.1\n" }
+    let(:argv) { ["compare", "--local", "--no-open", "-m", "fake/echo,fake/parrot", "--config", lineup] }
+
+    before { File.write(lineup, "request_types: [prompt]\nweighted_score:\n  weights:\n    #{weights}") }
+    after { FileUtils.remove_entry(dir) }
+
+    it "adds the column, the winners and the formula" do
+      expect(run_cli).to include("weighted_score", "best weighted_score [colors]", "best weighted_score overall", "Σ(|weight| × goodness)")
+    end
+
+    context "when a weight names tokens" do
+      let(:weights) { "tok_in: -1\n" }
+
+      it "refuses it, with no experiment run" do
+        run_cli
+        expect(stderr.string).to include("unknown columns tok_in")
+        expect(stdout.string).not_to include("best value")
+      end
+    end
+  end
+
+  context "with a lineup that sets no weights" do
+    let(:argv) { %w[compare --local --no-open -m fake/echo] }
+
+    it("leaves the leaderboard as it was") { expect(run_cli).not_to include("weighted_score") }
+  end
+
   context "with run and another lineup" do
     let(:dir) { Dir.mktmpdir }
     let(:argv) { ["run", "--local", "-n", "--config", File.join(dir, "lineup.yml")] }

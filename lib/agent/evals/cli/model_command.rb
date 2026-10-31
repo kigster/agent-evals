@@ -89,6 +89,16 @@ module Agent
         # @return [Array<Metric>]
         def metrics = scorer.metrics
 
+        # Reads the file's weights before anything is spent, so a bad one fails
+        # the run rather than the report at its end.
+        #
+        # @return [WeightedScore, nil] nil when the file sets none
+        # @raise [Error] on a bad weight
+        def weigh(config)
+          weights = config.score_weights
+          @weighted = weights.empty? ? nil : WeightedScore.new(weights, metrics: metrics.map(&:name))
+        end
+
         # @return [Hash{String => Object}] the setting flags that were given
         def overrides(options)
           { "effort" => options[:effort], "temperature" => options[:temperature], "max_tokens" => options[:max_tokens] }
@@ -337,23 +347,70 @@ module Agent
             values = group.filter_map { it.mean(primary) }
             { first: group.first, errors: group.sum { it.errors.size },
               value: values.size == group.size ? values.sum / values.size : nil,
-              usage: group.map(&:usage).reduce(Usage.zero, :+) }
+              usage: group.map(&:usage).reduce(Usage.zero, :+),
+              row:   overall_row(group) }
           end
-          groups.sort_by! { -(it[:value] || -1) }
+          weighted = weighted_by(groups.map { it[:row] })
+          groups.each_with_index { |g, index| g[:weighted] = weighted[index] }
+          groups.sort_by! { -((@weighted ? it[:weighted] : it[:value]) || -1) }
           rows = groups.map do |g|
             s = g[:first]
-            [s.model.id, s.model.effort || "default", temperature_cell(s), percent(g[:value]),
+            [s.model.id, s.model.effort || "default", temperature_cell(s), *(percent(g[:weighted]) if @weighted), percent(g[:value]),
              g[:errors], g[:usage].input_tokens, g[:usage].output_tokens, dollars(g[:usage].cost_usd)]
           end
           best = best_value(groups.map { [it[:value], it[:usage].cost_usd, it[:errors]] })
           table(rows,
-            header:    ["model", "effort", "temp", primary.name, "errors", "tok_in", "tok_out", "cost"],
+            header:    ["model", "effort", "temp", *("weighted_score" if @weighted), primary.name, "errors", "tok_in", "tok_out", "cost"],
             highlight: [best].compact,
             fill:      0)
-          return unless best
+          value_line(" overall (#{contender_label(groups[best][:first])})", groups[best][:value], groups[best][:usage].cost_usd) if best
+          winner = groups.find { it[:weighted] && it[:errors].zero? }
+          weighted_line(" overall (#{contender_label(winner[:first])})", winner[:weighted]) if @weighted && winner
+        end
 
-          g = groups[best]
-          value_line(" overall (#{contender_label(g[:first])})", g[:value], g[:usage].cost_usd)
+        # What {WeightedScore} reads from one experiment. Errors are a share of
+        # its cases, so that they sit on the same scale as the metrics.
+        #
+        # @param summary [Experiment::Summary]
+        # @return [Hash{String => Numeric, nil}]
+        def weighted_row(summary)
+          metrics.to_h { [it.name, summary.mean(it)] }.merge(
+            "score"  => summary.score,
+            "errors" => summary.errors.size.fdiv([summary.results.size, 1].max),
+            "time"   => summary.duration,
+            "cost"   => summary.usage.cost_usd.to_f
+          )
+        end
+
+        # One contender over every dataset: magnitudes add up, the rest average.
+        #
+        # @param group [Array<Experiment::Summary>]
+        # @return [Hash{String => Numeric, nil}]
+        def overall_row(group)
+          rows = group.map { weighted_row(it) }
+          rows.first.keys.to_h do |name|
+            values = rows.map { it[name] }
+            total = values.sum(&:to_f)
+            next [name, nil] if values.any?(&:nil?)
+
+            [name, WeightedScore::MAGNITUDES.include?(name) ? total : total / values.size]
+          end
+        end
+
+        # @param rows [Array<Hash>]
+        # @return [Array<Float, nil>] nils when the file sets no weights
+        def weighted_by(rows) = @weighted ? @weighted.call(rows) : Array.new(rows.size)
+
+        # @param summaries [Array<Experiment::Summary>]
+        # @return [Hash{Experiment::Summary => Float, nil}] by identity, each compared within its dataset
+        def weighted_scores(summaries)
+          summaries.group_by(&:dataset).values.each_with_object({}.compare_by_identity) do |group, scores|
+            group.zip(weighted_by(group.map { weighted_row(it) })).each { |summary, value| scores[summary] = value }
+          end
+        end
+
+        def weighted_line(label, value)
+          out.puts "best weighted_score#{label}: #{format("%.1f%%", value * 100)}, by the weights in weighted_score"
         end
 
         # Every experiment by its mean score, best first, with its cost and its
@@ -376,23 +433,30 @@ module Agent
           end
         end
 
-        # One row per experiment, best primary metric first, with the best
-        # value per dataset; the glossary; the totals, over several datasets;
-        # and every experiment by score.
+        # One row per experiment, best primary metric first, or best weighted_score
+        # score when the file sets weights, with the best value per dataset; the
+        # glossary; the totals, over several datasets; and every experiment by score.
         def leaderboard(summaries)
-          ranked = summaries.sort_by { [it.dataset, -(it.mean(primary) || -1)] }
+          weighted = weighted_scores(summaries)
+          ranked = summaries.sort_by { [it.dataset, -((@weighted ? weighted[it] : it.mean(primary)) || -1)] }
           rows = ranked.map do |s|
             [s.dataset, s.model.id, s.model.effort || "default", temperature_cell(s),
+             *(percent(weighted[s]) if @weighted),
              *metrics.map { percent(s.mean(it)) },
              s.errors.size, format("%.1fs", s.duration), s.usage.input_tokens, s.usage.output_tokens, dollars(s.usage.cost_usd)]
           end
           best = best_per_dataset(ranked)
           table(rows,
-            header:    ["dataset", "model", "effort", "temp", *metrics.map(&:name), "errors", "time", "tok_in", "tok_out", "cost"],
+            header:    ["dataset", "model", "effort", "temp", *("weighted_score" if @weighted), *metrics.map(&:name),
+                        "errors", "time", "tok_in", "tok_out", "cost"],
             highlight: best)
           best.each do |index|
             s = ranked[index]
             value_line(" [#{s.dataset}] (#{contender_label(s)})", s.mean(primary), s.usage.cost_usd)
+          end
+          ranked.group_by(&:dataset).each do |dataset, group|
+            winner = group.find { weighted[it] && it.errors.empty? }
+            weighted_line(" [#{dataset}] (#{contender_label(winner)})", weighted[winner]) if @weighted && winner
           end
           table(glossary, header: %w[Term Description], fill: 1, wrap: true)
           totals(summaries) if summaries.map(&:dataset).uniq.size > 1
@@ -401,7 +465,8 @@ module Agent
 
         # @return [Array<Array(String, String)>] the metrics' descriptions, then the gem's columns
         def glossary
-          metrics.map { [it.name, it.description.to_s.empty? ? "(no description)" : it.description] } + GLOSSARY.to_a
+          described = metrics.map { [it.name, it.description.to_s.empty? ? "(no description)" : it.description] } + GLOSSARY.to_a
+          @weighted ? [["weighted_score", @weighted.description], *described] : described
         end
       end
     end
