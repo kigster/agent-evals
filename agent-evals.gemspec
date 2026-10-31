@@ -45,6 +45,7 @@ Gem::Specification.new do |spec|
   # Already in the bundle through dry-cli-ui; named because the CLI draws its
   # own right-aligned tables and colored status boxes with them.
   spec.add_dependency "pastel", "~> 0.8"
+  spec.add_dependency "ruby_llm", "~> 2.1"
   spec.add_dependency "tty-box", "~> 0.7"
   spec.add_dependency "tty-table", "~> 0.12"
 
@@ -52,7 +53,7 @@ Gem::Specification.new do |spec|
   # Warnings builds a Logger, so a consumer without this line would raise LoadError.
   spec.add_dependency "logger", "~> 1.6"
 
-  # ruby_llm and braintrust are deliberately NOT runtime dependencies: a suite
-  # that brings its own transport, or scores locally, never loads them. The
-  # commands that need one require it lazily and name the gem when it is missing.
+  # Braintrust is deliberately not a runtime dependency: local runs and suites
+  # that choose another tracker never load it. The tracker command requires it
+  # lazily and names the gem when it is missing.
 end

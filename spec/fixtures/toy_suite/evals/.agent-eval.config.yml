@@ -8,6 +8,8 @@ defaults:
   temperature: 0.2
   max_tokens: 256
   parallelism: 2
+results:
+  autosave: false
 vendors:
   fake:
     - model: echo

@@ -1,6 +1,6 @@
 # Agent Evals (`agent-evals`)
 
-[![Gem Version](https://badge.fury.io/rb/agent-evals.svg)](https://rubygems.org/gems/agent-evals) [![CircleCI](https://dl.circleci.com/status-badge/img/gh/kigster/agent-evals/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/kigster/agent-evals/tree/main)
+[![Gem Version](https://badge.fury.io/rb/agent-evals.svg)](https://rubygems.org/gems/agent-evals) [![CircleCI](https://dl.circleci.com/status-badge/img/gh/kigster/agent-evals/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/kigster/agent-evals/tree/main) ![coverage](docs/badges/coverage-badge.svg)
 
 ______________________________________________________________________
 
@@ -341,6 +341,12 @@ defaults:
   max_tokens: 8192           # covers the reasoning tokens a high effort spends
   parallelism: 4             # cases in flight per experiment; the default for -p
 
+results:
+  autosave: true              # save every completed run as JSON (default)
+  destination: ./evals/results/
+  temp_dir: ./tmp              # temporary JSON when autosave is false
+  display: browser            # none, tui or browser
+
 vendors:                     # the OpenRouter list; every entry takes a prompt
   anthropic:
     - model: claude-fable-5
@@ -415,6 +421,10 @@ agent-evals run -m openai/gpt-4.1-mini         # one model, every dataset, per-c
 agent-evals run -m anthropic/claude-haiku-5.5 -e low -d vague -c vague/00
 agent-evals run --local -o                     # no remote tracker; the breakdowns go to log/
 agent-evals compare                            # everything the lineup lists, leaderboard only
+agent-evals compare                         # uses results.display
+agent-evals compare --format html -o report.html
+agent-evals compare --format json -o results.json # save every result for later rendering
+agent-evals render results.json -o report.html # render saved results; no model calls
 agent-evals compare -n                         # show that matrix, call nothing
 agent-evals completion zsh                     # shell completion (bash too)
 ```
@@ -424,7 +434,8 @@ agent-evals completion zsh                     # shell completion (bash too)
 | `cases`      | Lists cases and refused lineup entries               | no           |
 | `verify`     | Checks inputs, `expected.json`, adapter and scorer   | no           |
 | `run`        | Runs experiments; per-case breakdown and leaderboard | yes          |
-| `compare`    | Runs experiments; leaderboard only                   | yes          |
+| `compare`    | Runs experiments; leaderboard or saved report        | yes          |
+| `render`     | Renders a saved JSON run as standalone HTML          | no           |
 | `version`    | Prints the gem version (`-V`)                        | no           |
 | `completion` | Prints a bash or zsh completion script               | no           |
 
@@ -432,9 +443,9 @@ agent-evals completion zsh                     # shell completion (bash too)
 - `verify` reports empty inputs and missing or unparsable `expected.json`, then runs `adapter.verify(dataset)` and `scorer.verify`.
 - `run` and `compare` run one experiment per model and dataset, as many at once as the machine has CPUs. `-j N` / `--concurrency N` sets another limit, and `-j 0` starts them all together. `-p` is separate: the cases in flight inside each experiment.
 
-Flags shared by `run` and `compare`: `-m/--models`, `-d/--dataset` (every dataset when omitted), `-c/--case`, `-e/--effort`, `-t/--temperature`, `--max-tokens`, `-p/--parallelism`, `-j/--concurrency`, `-C/--config FILE`, `--project NAME`, `--tracker NAME`, `--local`, `--no-open`, `-n/--dry-run`, `-o/--output [FILE]`. `-l` and `-L` are reserved for logging and not yet implemented.
+Flags shared by `run` and `compare`: `-m/--models`, `-d/--dataset` (every dataset when omitted), `-c/--case`, `-e/--effort`, `-t/--temperature`, `--max-tokens`, `-p/--parallelism`, `-j/--concurrency`, `-C/--config FILE`, `--project NAME`, `--tracker NAME`, `--local`, `--no-open`, `-n/--dry-run`, `-o/--output [FILE]`, `--format tui|html|json`, `--totals overall|variant|both`, `--display none|tui|browser`, `--autosave/--no-autosave`, `--destination DIR` and `--temp-dir DIR`. `--totals` controls the TUI totals tables: the default `overall` compares contenders across all cases, `variant` compares each case folder (such as `complete` or `vague`) across datasets, and `both` prints both views. Completed runs are saved as timestamped JSON by default, independently of the selected display. Browser and TUI reports are rendered from that JSON; `--no-autosave` uses a temporary JSON snapshot under `temp_dir`. Use `agent-evals render results.json` to regenerate HTML from saved results without repeating model calls. `-l` and `-L` are reserved for logging and not yet implemented.
 
-**Reading the output.** The leaderboard has one column per metric the scorer declares, ranked by the `primary` one, with a glossary built from each metric's `description`. STDOUT carries the tables. Progress bars and warnings go to STDERR, and anything a library prints while the bars redraw is saved to `log/<command>.warnings.<stamp>.log` instead of garbling the screen.
+**Reading the output.** `results.display` selects no report, a terminal leaderboard, or a browser report. The TUI has one column per metric the scorer declares, ranked by the `primary` one, with a glossary built from each metric's `description`. Browser reports show global and dataset standings, sortable tables, case inputs, expected answers, scores and diagnostics. Provider names and model IDs use separate colors; the hero standings show effort and temperature next to the model. Every JSON snapshot records both parsed CLI options and effective run settings, including expanded model settings and selected cases. `render` turns a saved snapshot into HTML later. Progress bars and warnings go to STDERR, and anything a library prints while the bars redraw is saved to `log/<command>.warnings.<stamp>.log` instead of garbling the screen.
 
 ## Trackers
 
