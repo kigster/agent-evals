@@ -9,7 +9,7 @@ RSpec.describe Agent::Evals::Render::Reports::HTML do
         lib/agent/evals/templates/html_report.js
       ]
     end
-    let(:gem_specification) { Gem::Specification.load(File.expand_path("../../../agent-evals.gemspec", __dir__)) }
+    let(:gem_specification) { Gem::Specification.load(File.expand_path("../../../../../agent-evals.gemspec", __dir__)) }
 
     it "includes the template and assets in the built gem" do
       expect(gem_specification.files).to include(*template_paths)
