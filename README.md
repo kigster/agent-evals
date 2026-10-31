@@ -415,6 +415,8 @@ agent-evals run -m openai/gpt-4.1-mini         # one model, every dataset, per-c
 agent-evals run -m anthropic/claude-haiku-5.5 -e low -d vague -c vague/00
 agent-evals run --local -o                     # no remote tracker; the breakdowns go to log/
 agent-evals compare                            # everything the lineup lists, leaderboard only
+agent-evals compare --format html              # standalone report under log/
+agent-evals compare --format html -o report.html
 agent-evals compare -n                         # show that matrix, call nothing
 agent-evals completion zsh                     # shell completion (bash too)
 ```
@@ -424,7 +426,7 @@ agent-evals completion zsh                     # shell completion (bash too)
 | `cases`      | Lists cases and refused lineup entries               | no           |
 | `verify`     | Checks inputs, `expected.json`, adapter and scorer   | no           |
 | `run`        | Runs experiments; per-case breakdown and leaderboard | yes          |
-| `compare`    | Runs experiments; leaderboard only                   | yes          |
+| `compare`    | Runs experiments; leaderboard or HTML case report    | yes          |
 | `version`    | Prints the gem version (`-V`)                        | no           |
 | `completion` | Prints a bash or zsh completion script               | no           |
 
@@ -432,9 +434,9 @@ agent-evals completion zsh                     # shell completion (bash too)
 - `verify` reports empty inputs and missing or unparsable `expected.json`, then runs `adapter.verify(dataset)` and `scorer.verify`.
 - `run` and `compare` run one experiment per model and dataset, as many at once as the machine has CPUs. `-j N` / `--concurrency N` sets another limit, and `-j 0` starts them all together. `-p` is separate: the cases in flight inside each experiment.
 
-Flags shared by `run` and `compare`: `-m/--models`, `-d/--dataset` (every dataset when omitted), `-c/--case`, `-e/--effort`, `-t/--temperature`, `--max-tokens`, `-p/--parallelism`, `-j/--concurrency`, `-C/--config FILE`, `--project NAME`, `--tracker NAME`, `--local`, `--no-open`, `-n/--dry-run`, `-o/--output [FILE]`. `-l` and `-L` are reserved for logging and not yet implemented.
+Flags shared by `run` and `compare`: `-m/--models`, `-d/--dataset` (every dataset when omitted), `-c/--case`, `-e/--effort`, `-t/--temperature`, `--max-tokens`, `-p/--parallelism`, `-j/--concurrency`, `-C/--config FILE`, `--project NAME`, `--tracker NAME`, `--local`, `--no-open`, `-n/--dry-run`, `-o/--output [FILE]`, `--format tui|html`. TUI is the default; HTML writes a standalone report to `log/` unless `-o` names a path (`-o -` writes the HTML to stdout). `-l` and `-L` are reserved for logging and not yet implemented.
 
-**Reading the output.** The leaderboard has one column per metric the scorer declares, ranked by the `primary` one, with a glossary built from each metric's `description`. STDOUT carries the tables. Progress bars and warnings go to STDERR, and anything a library prints while the bars redraw is saved to `log/<command>.warnings.<stamp>.log` instead of garbling the screen.
+**Reading the output.** TUI is the default. It has one column per metric the scorer declares, ranked by the `primary` one, with a glossary built from each metric's `description`. `--format html` writes a standalone report with global and dataset standings, sortable tables, case inputs, expected answers, scores and diagnostics. Provider names and model IDs use separate colors; effort and temperature have their own columns. Progress bars and warnings go to STDERR, and anything a library prints while the bars redraw is saved to `log/<command>.warnings.<stamp>.log` instead of garbling the screen.
 
 ## Trackers
 

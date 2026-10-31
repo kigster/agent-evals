@@ -195,6 +195,51 @@ RSpec.describe Agent::Evals::Launcher do
     end
   end
 
+  context "with compare writing an HTML report" do
+    let(:dir) { Dir.mktmpdir }
+    let(:path) { File.join(dir, "report.html") }
+    let(:argv) { ["compare", "--format", "html", "-m", "fake/echo", "-d", "colors", "--local", "--no-open", "-o", path] }
+
+    before { allow(Dry::CLI::UI::Invocation).to receive(:root).and_return(dir) }
+
+    after { FileUtils.remove_entry(dir) }
+
+    it "writes the case results as an HTML artifact and reports its path" do
+      run_cli
+
+      expect(stderr.string).to include(path)
+      expect(File.read(path)).to include(
+        "<!doctype html>",
+        "Global standings",
+        "clear/001",
+        "field_accuracy",
+        '<th>Provider</th><th>Model</th><th>Effort</th><th>Temperature</th>',
+        'table class="sortable"',
+        'aria-sort',
+        'max-width:1520px',
+        'overscroll-behavior-inline:contain',
+        'class="provider">fake',
+        'class="model-id">echo'
+      )
+    end
+
+    it "does not print the TUI leaderboard" do
+      expect(run_cli).not_to include("Best value:", "Description")
+    end
+
+    context "without an explicit report path" do
+      let(:argv) { ["compare", "--format", "html", "-m", "fake/echo", "-d", "colors", "--local", "--no-open"] }
+
+      it "writes the timestamped HTML report under log/" do
+        run_cli
+
+        report_path = Dir[File.join(dir, "log", "*.html")].fetch(0)
+        expect(File.read(report_path)).to include("<!doctype html>", "clear/001")
+        expect(stderr.string).to include("HTML report written to")
+      end
+    end
+  end
+
   context "with run holding back its warnings" do
     let(:argv) { %w[run -m fake/one -c clear/001 --local] }
     let(:log) { Dir.mktmpdir }

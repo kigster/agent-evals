@@ -4,9 +4,9 @@ module Agent
   module Evals
     module CLI
       # Several models at one setting, side by side: one experiment each,
-      # and only the leaderboard.
+      # with either the terminal leaderboard or a full HTML report.
       class Compare < ModelCommand
-        desc "Run every case against several models and print a leaderboard"
+        desc "Run every case against several models and report the results"
 
         example [
           "                                     # everything .agent-eval.config.yml lists",
@@ -24,7 +24,7 @@ module Agent
 
           setup!(contenders, options)
           runs = datasets.flat_map { |name| contenders.map { experiment(it, config, options, dataset: name) } }
-          report(execute(runs, concurrency: concurrency(options)), output: options[:output], open: options[:open], scores: options[:scores])
+          report(execute(runs, concurrency: concurrency(options)), output: options[:output], open: options[:open], scores: options[:scores], format: options[:format])
         end
       end
     end

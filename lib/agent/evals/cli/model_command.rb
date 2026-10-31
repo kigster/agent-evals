@@ -70,6 +70,10 @@ module Agent
             type:    :boolean,
             default: false,
             desc:    "Also print every experiment by score, with its cost and its tracker's link"
+          subclass.option :format,
+            default: "tui",
+            values:  %w[tui html],
+            desc:    "Report format: tui for the terminal, html for a standalone report file"
           subclass.option :local,
             type:    :boolean,
             default: false,
@@ -245,16 +249,18 @@ module Agent
         # the scores; then says where the warnings went, if any, and opens the
         # best-scoring experiment.
         #
-        # With -o, the block's output goes to the file alone, and the rest to
-        # both, each drawn for its own stream. The file is in color and ends
-        # with the time it was closed, as dry-cli-ui's own reports do.
+        # TUI reports keep their existing terminal and -o behavior. HTML
+        # reports are standalone files, defaulting to log/<command>.<time>.html.
         #
         # @param summaries [Array<Experiment::Summary>]
         # @param output [String, nil] what -o was given: nil, "-", "" for the default file, or a path
         # @param open [Boolean]
         # @param scores [Boolean] also print every experiment by score
+        # @param format [String] `tui` or `html`
         # @return [void]
-        def report(summaries, output:, open:, scores: false, &details)
+        def report(summaries, output:, open:, scores: false, format: "tui", &details)
+          return html_report(summaries, output:, open:) if format == "html"
+
           path = invocation.report_path(output)
           if path
             File.open(path, "w") do |file|
@@ -270,6 +276,30 @@ module Agent
           end
           leaderboard(summaries, scores: scores)
           status_box(:info, "Report written to #{relative(path)}", stream: err) if path
+          save_warnings
+          url = summaries.max_by { it.score || -1 }&.permalink
+          status_box(:warning, "could not open #{url}", stream: err) if open && url && !configuration.runtime.browse(url)
+        end
+
+        # Writes the standalone HTML report without printing a terminal table.
+        # A dash writes the HTML document to stdout; omitted -o picks a timestamped
+        # file under log/.
+        #
+        # @param summaries [Array<Experiment::Summary>]
+        # @param output [String, nil]
+        # @param open [Boolean]
+        # @return [void]
+        def html_report(summaries, output:, open:)
+          path = if output == "-"
+                   nil
+                 elsif output.nil? || output.empty?
+                   invocation.report_path("").sub(/\.log\z/, ".html")
+                 else
+                   invocation.report_path(output)
+                 end
+          document = HtmlReport.render(summaries, metrics:, weighted_score: @weighted)
+          path ? File.write(path, document) : out.write(document)
+          status_box(:success, "HTML report written to #{relative(path)}", stream: err) if path
           save_warnings
           url = summaries.max_by { it.score || -1 }&.permalink
           status_box(:warning, "could not open #{url}", stream: err) if open && url && !configuration.runtime.browse(url)
