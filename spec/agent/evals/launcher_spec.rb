@@ -177,7 +177,7 @@ RSpec.describe Agent::Evals::Launcher do
   context "with run writing its report to a file" do
     let(:dir) { Dir.mktmpdir }
     let(:path) { File.join(dir, "report.log") }
-    let(:argv) { ["run", "-m", "fake/one,fake/two", "-c", "clear/001", "--local", "-o", path] }
+    let(:argv) { ["run", "-m", "fake/one,fake/two", "-c", "clear/001", "--local", "--scores", "-o", path] }
 
     after { FileUtils.remove_entry(dir) }
 
@@ -402,6 +402,26 @@ RSpec.describe Agent::Evals::Launcher do
     end
   end
 
+  context "with compare over two datasets, by default" do
+    let(:argv) { %w[compare --local --no-open -m fake/one] }
+
+    it "leaves out every experiment by score" do
+      expect(run_cli).not_to include('│ url ')
+    end
+
+    it "ends on the conclusions, the overall ones last" do
+      lines = run_cli.strip.lines
+      expect(lines.last).to start_with("best value overall")
+      expect(lines[-2]).to include("[colors]")
+    end
+  end
+
+  context "with --scores" do
+    let(:argv) { %w[compare --local --no-open -m fake/one --scores] }
+
+    it("prints every experiment by score, before the conclusions") { expect(run_cli).to match(/│ url .*Best value/m) }
+  end
+
   context "with a lineup that sets no weights" do
     let(:argv) { %w[compare --local --no-open -m fake/echo] }
 
@@ -501,7 +521,7 @@ RSpec.describe Agent::Evals::Launcher do
   end
 
   context "with a remote tracker" do
-    let(:argv) { %w[run -m fake/one -d colors -c clear/001 --tracker recording-tracker] }
+    let(:argv) { %w[run -m fake/one -d colors -c clear/001 --tracker recording-tracker --scores] }
     let(:opened) { true }
 
     before do
