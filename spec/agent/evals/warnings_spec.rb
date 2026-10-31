@@ -26,11 +26,19 @@ RSpec.describe Agent::Evals::Warnings do
         warn "from Kernel#warn"
         Braintrust::Log.warn("from Braintrust")
         RubyLLM.logger.warn("from RubyLLM")
+        OpenTelemetry.handle_error(message: "from OpenTelemetry")
       end
     end
 
-    it { expect(warnings.to_a.join("\n")).to include("from Kernel#warn", "from Braintrust", "from RubyLLM") }
+    it { expect(warnings.to_a.join("\n")).to include("from Kernel#warn", "from Braintrust", "from RubyLLM", "from OpenTelemetry") }
     it { expect($stderr).to be(stderr) }
+
+    it "puts OpenTelemetry's logger back" do
+      original = OpenTelemetry.logger
+      warnings.capture { expect(OpenTelemetry.logger).not_to be(original) }
+      expect(OpenTelemetry.logger).to be(original)
+    end
+
     it { expect(warnings).not_to be_none }
   end
 
