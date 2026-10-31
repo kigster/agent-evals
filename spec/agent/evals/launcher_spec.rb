@@ -240,6 +240,15 @@ RSpec.describe Agent::Evals::Launcher do
     end
   end
 
+  context "with compare writing an HTML report to stdout" do
+    let(:argv) { ["compare", "--format", "html", "-m", "fake/echo", "-d", "colors", "--local", "--no-open", "-o", "-"] }
+
+    it "writes the standalone document to stdout without a file path message" do
+      expect(run_cli).to start_with("<!doctype html>")
+      expect(stderr.string).not_to include("HTML report written to")
+    end
+  end
+
   context "with run holding back its warnings" do
     let(:argv) { %w[run -m fake/one -c clear/001 --local] }
     let(:log) { Dir.mktmpdir }
