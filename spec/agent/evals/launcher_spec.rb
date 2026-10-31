@@ -198,7 +198,8 @@ RSpec.describe Agent::Evals::Launcher do
   context "with compare writing an HTML report" do
     let(:dir) { Dir.mktmpdir }
     let(:path) { File.join(dir, "report.html") }
-    let(:argv) { ["compare", "--format", "html", "-m", "fake/echo", "-d", "colors", "--local", "--no-open", "-o", path] }
+    let(:destination) { File.join(dir, "saved-results") }
+    let(:argv) { ["compare", "--format", "html", "-m", "fake/echo", "-d", "colors", "--autosave", "--destination", destination, "--local", "--no-open", "-o", path] }
 
     before { allow(Dry::CLI::UI::Invocation).to receive(:root).and_return(dir) }
 
@@ -217,7 +218,7 @@ RSpec.describe Agent::Evals::Launcher do
         'table class="sortable"',
         'table class="sortable standings-table"',
         'aria-sort',
-        'max-width: 1520px',
+        'max-width: 1600px',
         'overscroll-behavior-inline: contain',
         '<th><span>Weighted</span><span>score</span></th>',
         '<th><span>Primary score</span><span>(field_accuracy)</span></th>',
@@ -228,12 +229,28 @@ RSpec.describe Agent::Evals::Launcher do
       )
     end
 
+    it "shows token totals in the global and per-dataset summaries" do
+      run_cli
+      report = File.read(path)
+
+      expect(report).to include("↓ Tokens in", "↑ Tokens out")
+      expect(report).to match(%r{<b>↓ [\d,]+</b>})
+      expect(report).to match(%r{<b>↑ [\d,]+</b>})
+    end
+
+    it "saves the JSON snapshot used to render the HTML report" do
+      run_cli
+
+      expect(Dir[File.join(destination, "*.json")]).to have_attributes(size: 1)
+      expect(stderr.string).to include("JSON results written to", "HTML report written to")
+    end
+
     it "does not print the TUI leaderboard" do
       expect(run_cli).not_to include("Best value:", "Description")
     end
 
     context "without an explicit report path" do
-      let(:argv) { ["compare", "--format", "html", "-m", "fake/echo", "-d", "colors", "--local", "--no-open"] }
+      let(:argv) { ["compare", "--format", "html", "-m", "fake/echo", "-d", "colors", "--autosave", "--destination", destination, "--local", "--no-open"] }
 
       it "writes the timestamped HTML report under log/" do
         run_cli
@@ -241,6 +258,16 @@ RSpec.describe Agent::Evals::Launcher do
         report_path = Dir[File.join(dir, "log", "*.html")].fetch(0)
         expect(File.read(report_path)).to include("<!doctype html>", "clear/001")
         expect(stderr.string).to include("HTML report written to")
+      end
+    end
+
+    context "when opening the HTML report" do
+      let(:argv) { ["compare", "--format", "html", "-m", "fake/echo", "-d", "colors", "--autosave", "--destination", destination, "--local", "-o", path] }
+
+      it "opens the generated file in the browser" do
+        run_cli
+
+        expect(runtime).to have_received(:browse).with("file://#{path}")
       end
     end
   end
@@ -313,6 +340,30 @@ RSpec.describe Agent::Evals::Launcher do
           "model" => "fake/echo", "provider" => "fake", "effort" => "high", "temperature" => 0.7, "max_tokens" => 4096
         ))
       )
+    end
+  end
+
+  context "with the default results settings" do
+    let(:dir) { Dir.mktmpdir }
+    let(:config_path) { File.join(dir, "lineup.yml") }
+    let(:destination) { File.join(dir, "saved-results") }
+    let(:argv) do
+      ["compare", "--config", config_path, "-m", "fake/echo", "-d", "colors", "--local", "--no-open",
+       "--display", "none", "--destination", destination]
+    end
+
+    before do
+      File.write(config_path, "request_types: [prompt]\n")
+      allow(Dry::CLI::UI::Invocation).to receive(:root).and_return(dir)
+    end
+
+    after { FileUtils.remove_entry(dir) }
+
+    it "saves a timestamped JSON report without an autosave flag" do
+      run_cli
+
+      expect(Dir[File.join(destination, "*.json")]).to have_attributes(size: 1)
+      expect(stderr.string).to include("JSON results written to")
     end
   end
 

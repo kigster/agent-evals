@@ -29,10 +29,10 @@ RSpec.describe Agent::Evals::Render::Reports::HTML do
       Agent::Evals::Model.new(id:, provider: configuration.providers.for(id))
     end
 
-    def build_case(id, number:)
+    def build_case(id, number:, dataset: "coverage")
       Agent::Evals::Case.new(
         id:,
-        dataset: "coverage",
+        dataset:,
         variant: "partial",
         input: "case input",
         expected: {},
@@ -51,10 +51,10 @@ RSpec.describe Agent::Evals::Render::Reports::HTML do
       )
     end
 
-    def build_summary(model:, results:, usage: Agent::Evals::Usage.zero)
+    def build_summary(model:, results:, usage: Agent::Evals::Usage.zero, dataset: "coverage")
       Agent::Evals::Experiment::Summary.new(
         model:,
-        dataset: "coverage",
+        dataset:,
         name: "coverage experiment",
         means: {},
         results:,
@@ -75,7 +75,9 @@ RSpec.describe Agent::Evals::Render::Reports::HTML do
     end
 
     def render_report(summaries, weighted_score: nil)
-      described_class.render(summaries, metrics:, weighted_score:)
+      json = Agent::Evals::Render::Reports::JSON.dump(summaries, metrics:, weighted_score:)
+      decoded = Agent::Evals::Render::Reports::JSON.decode(json, providers: configuration.providers)
+      described_class.render(decoded)
     end
 
     it "shows best coverage without naming a leader when no contender covers every case" do
@@ -123,6 +125,35 @@ RSpec.describe Agent::Evals::Render::Reports::HTML do
       expect(render_report([summary])).to include("<b>$0.01</b>", "$0.01")
     end
 
+    it "shows per-experiment token totals and aggregates them across datasets" do
+      bookkeeping_case = build_case("partial/001", number: 1, dataset: "bookkeeping")
+      therapy_case = build_case("partial/001", number: 1, dataset: "therapy")
+      report = render_report([
+                               build_summary(model: echo_model,
+                                 dataset: "bookkeeping",
+                                 results: [scored_run(model: echo_model, kase: bookkeeping_case, accuracy: 0.9)],
+                                 usage: Agent::Evals::Usage.new(input_tokens: 1234, output_tokens: 321, cost_usd: 0.01)),
+                               build_summary(model: echo_model,
+                                 dataset: "therapy",
+                                 results: [scored_run(model: echo_model, kase: therapy_case, accuracy: 0.8)],
+                                 usage: Agent::Evals::Usage.new(input_tokens: 3456, output_tokens: 789, cost_usd: 0.02))
+                             ])
+
+      expect(report).to include("↓ Tokens in", "↑ Tokens out", "1,234", "321", "3,456", "789", "4,690", "1,110")
+    end
+
+    it "adds section navigation and opens dataset score sections by default" do
+      kase = build_case("partial/001", number: 1, dataset: "bookkeeping")
+      report = render_report([
+                               build_summary(model: echo_model,
+                                 dataset: "bookkeeping",
+                                 results: [scored_run(model: echo_model, kase:, accuracy: 0.9)])
+                             ])
+
+      expect(report).to include('href="#overview"', 'href="#standings"', 'href="#coverage"', 'href="#dataset-1"')
+      expect(report).to include('<details class="dataset" id="dataset-1" open>')
+    end
+
     context "with a weighted score" do
       let(:weighted_score) { Agent::Evals::WeightedScore.new({ "accuracy" => 1.0 }, metrics: ["accuracy"]) }
       let(:weighted_summaries) do
@@ -145,7 +176,7 @@ RSpec.describe Agent::Evals::Render::Reports::HTML do
       it "sorts the coverage table from highest weighted score to lowest" do
         leader_row = '<td><span class="provider">fake</span></td><td><span class="model-id">echo</span></td>'
         runner_up_row = '<td><span class="provider">fake</span></td><td><span class="model-id">parrot</span></td>'
-        coverage_table = report[%r{<h3>Coverage by model</h3>\s*<div class="scroll">\s*<table class="sortable">(.*?)</table>}m, 1]
+        coverage_table = report[%r{<h3 id="coverage">Coverage by model</h3>\s*<div class="scroll">\s*<table class="sortable">(.*?)</table>}m, 1]
 
         expect(coverage_table.index(leader_row)).to be < coverage_table.index(runner_up_row)
       end

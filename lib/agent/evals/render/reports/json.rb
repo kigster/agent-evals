@@ -12,7 +12,7 @@ module Agent
         class JSON
           FORMAT = "agent-evals-report"
           VERSION = 1
-          Loaded = Data.define(:summaries, :metrics, :weighted_score)
+          Loaded = Data.define(:suite, :generated_at, :run_options, :summaries, :metrics, :weighted_score)
           SavedExperiment = Data.define(:model)
 
           # @param summaries [Array<Experiment::Summary>]
@@ -61,7 +61,12 @@ module Agent
             end
             weights = document["weights"]
             weighted_score = WeightedScore.new(weights, metrics: metrics.map(&:name)) if weights && !weights.empty?
-            Loaded.new(summaries: document.fetch("summaries").map { summary_from(it, providers) }, metrics:, weighted_score:)
+            Loaded.new(suite: document.fetch("suite", "agent-evals"),
+              generated_at: document["generated_at"],
+              run_options: document.fetch("run_options", {}),
+              summaries: document.fetch("summaries").map { summary_from(it, providers) },
+              metrics:,
+              weighted_score:)
           rescue ::JSON::ParserError => e
             raise Error, "invalid report JSON: #{e.message}"
           end

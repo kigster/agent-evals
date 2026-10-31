@@ -14,23 +14,17 @@ module Agent
           # Directory containing the report template and its embedded assets.
           TEMPLATE_DIRECTORY = File.expand_path("../../templates", __dir__)
 
-          # @param summaries [Array<Experiment::Summary>]
-          # @param metrics [Array<Metric>]
-          # @param weighted_score [WeightedScore, nil]
+          # @param report [JSON::Loaded] decoded from a saved JSON snapshot
           # @return [String]
-          def self.render(summaries, metrics:, weighted_score: nil, stylesheet_path: nil, script_path: nil)
-            new(summaries, metrics:, weighted_score:, stylesheet_path:, script_path:).render
+          def self.render(report, stylesheet_path: nil, script_path: nil)
+            new(report, stylesheet_path:, script_path:).render
           end
 
-          attr_reader :summaries, :metrics, :weighted_score, :stylesheet_path, :script_path
+          attr_reader :report, :stylesheet_path, :script_path
 
-          # @param summaries [Array<Experiment::Summary>]
-          # @param metrics [Array<Metric>]
-          # @param weighted_score [WeightedScore, nil]
-          def initialize(summaries, metrics:, weighted_score: nil, stylesheet_path: nil, script_path: nil)
-            @summaries = summaries
-            @metrics = metrics
-            @weighted_score = weighted_score
+          # @param report [JSON::Loaded] decoded from a saved JSON snapshot
+          def initialize(report, stylesheet_path: nil, script_path: nil)
+            @report = report
             @stylesheet_path = stylesheet_path
             @script_path = script_path
           end
@@ -51,7 +45,13 @@ module Agent
           def report_title = "#{configuration_name} evaluation report"
 
           # @return [String]
-          def configuration_name = Agent::Evals.configuration.name
+          def configuration_name = report.suite
+
+          def summaries = report.summaries
+
+          def metrics = report.metrics
+
+          def weighted_score = report.weighted_score
 
           # @return [Array<RunResult>]
           def results = summaries.flat_map(&:results)
@@ -62,11 +62,14 @@ module Agent
           # @return [Hash{Symbol => Object}] health counts and cost for the template
           def health_summary
             failed = results.count { !it.score || it.failed? || it.reply&.error? }
+            usage = total_usage
             {
-              successful: successful_results.size,
-              total:      results.size,
+              successful:    successful_results.size,
+              total:         results.size,
               failed:,
-              cost:       money(total_usage.cost_usd)
+              input_tokens:  tokens(usage.input_tokens),
+              output_tokens: tokens(usage.output_tokens),
+              cost:          money(usage.cost_usd)
             }
           end
 
@@ -149,13 +152,15 @@ module Agent
             successful_keys = successful.map { it.case.key }.uniq
 
             {
-              model:      group.first.model,
-              successful: successful_keys.length,
-              total:      expected_keys.length,
+              model:         group.first.model,
+              successful:    successful_keys.length,
+              total:         expected_keys.length,
               errors:,
               cost:,
+              input_tokens:  group.sum { it.usage.input_tokens },
+              output_tokens: group.sum { it.usage.output_tokens },
               row:,
-              complete:   expected_keys.length.positive? && successful_keys.sort == expected_keys.uniq.sort && errors.zero?
+              complete:      expected_keys.length.positive? && successful_keys.sort == expected_keys.uniq.sort && errors.zero?
             }
           end
 
@@ -219,6 +224,10 @@ module Agent
             cents = (value.to_s.to_r * 100).ceil
             format("$%<dollars>d.%<cents>02d", dollars: cents / 100, cents: cents % 100)
           end
+
+          # @param value [Numeric]
+          # @return [String]
+          def tokens(value) = value.to_i.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\\1,').reverse
 
           # @param value [Object]
           # @return [String]

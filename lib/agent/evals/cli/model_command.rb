@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "pathname"
+require "uri"
 
 module Agent
   module Evals
@@ -109,7 +110,7 @@ module Agent
         def scorer = configuration.scorer
 
         # @return [Array<Metric>]
-        def metrics = scorer.metrics
+        def metrics = @report_metrics || scorer.metrics
 
         # Reads the file's weights before anything is spent, so a bad one fails
         # the run rather than the report at its end.
@@ -305,16 +306,25 @@ module Agent
           pipeline = render_pipeline(results, run_options)
 
           if format == "html"
-            if results[:autosave]
-              json_path = pipeline.save_json(summaries:, metrics:, weighted_score: @weighted, run_options: snapshot_options)
+            json_path = if results[:autosave]
+                          pipeline.save_json(summaries:, metrics:, weighted_score: @weighted, run_options: snapshot_options)
+                        end
+            json = if json_path
+                     File.read(json_path)
+                   else
+                     pipeline.write_json(summaries:, metrics:, weighted_score: @weighted, run_options: snapshot_options, path: nil)
+                   end
+            if json_path
               status_box(:success, "JSON results written to #{relative(json_path)}", stream: err)
             end
             path = report_output_path(output, "html")
-            document = pipeline.write_html(summaries:, metrics:, weighted_score: @weighted, path:)
+            document = pipeline.write_html(json:, path:)
             path ? status_box(:success, "HTML report written to #{relative(path)}", stream: err) : out.write(document)
             save_warnings
-            url = summaries.max_by { it.score || -1 }&.permalink
-            status_box(:warning, "could not open #{url}", stream: err) if open && url && !configuration.runtime.browse(url)
+            if open && path
+              url = URI::DEFAULT_PARSER.escape("file://#{path}")
+              status_box(:warning, "could not open #{path}", stream: err) unless configuration.runtime.browse(url)
+            end
             return
           end
           if format == "json"
@@ -336,8 +346,12 @@ module Agent
             run_options: snapshot_options,
             autosave: results[:autosave],
             display: results[:display],
-            open:) do |shown|
-            terminal_report(shown, output:, open:, scores:, totals_mode: options[:totals]) { details&.call(shown) }
+            open:) do |report|
+            @report_metrics = report.metrics
+            @weighted = report.weighted_score
+            terminal_report(report.summaries, output:, open:, scores:, totals_mode: options[:totals]) do |shown|
+              details&.call(shown)
+            end
           end
           if result.json_path
             status_box(:success, "JSON results written to #{relative(result.json_path)}", stream: err)
@@ -434,7 +448,7 @@ module Agent
 
         def dollars(value) = format("$%.4f", value.to_f)
 
-        def primary = scorer.primary
+        def primary = metrics.find(&:primary) || scorer.primary
 
         # The best value: the cheapest entry within {VALUE_MARGIN} of the best
         # primary metric. Entries with errors, or no score, do not compete. A

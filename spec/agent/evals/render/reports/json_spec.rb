@@ -49,6 +49,8 @@ RSpec.describe Agent::Evals::Render::Reports::JSON do
       expect(parsed.summaries.first.results.first.case.input).to eq("Choose blue.")
       expect(parsed.summaries.first.results.first.case.expected).to eq("color" => "blue")
       expect(parsed.summaries.first.results.first.reply.output).to eq("color" => "blue")
+      expect(parsed.summaries.first.usage.input_tokens).to eq(4)
+      expect(parsed.summaries.first.usage.output_tokens).to eq(2)
       expect(parsed.summaries.first.usage.cost_usd).to eq(0.001)
     end
 

@@ -33,7 +33,7 @@ module Agent
           # @param autosave [Boolean]
           # @param display [String]
           # @param open [Boolean]
-          # @yield [summaries] display the decoded JSON in the terminal
+          # @yield [report] display the decoded JSON in the terminal
           # @return [Result]
           def call(summaries:, metrics:, weighted_score:, run_options:, autosave:, display:, open:)
             return Result.new(nil, nil, nil, nil, nil) unless autosave || display != "none"
@@ -46,10 +46,10 @@ module Agent
             report = JSON.decode(File.read(json_path), providers: @providers)
             assets = case display
                      when "tui"
-                       yield report.summaries if block_given?
+                       yield report if block_given?
                        [nil, nil, nil, nil]
                      when "browser"
-                       render_browser(report, metrics:, weighted_score:, stamp:, open:)
+                       render_browser(report, stamp:, open:)
                      else
                        [nil, nil, nil, nil]
                      end
@@ -76,13 +76,12 @@ module Agent
             end
           end
 
-          # @param summaries [Array<Experiment::Summary>]
-          # @param metrics [Array<Metric>]
-          # @param weighted_score [WeightedScore, nil]
+          # @param json [String] serialized run results
           # @param path [String, nil] nil returns HTML text to the caller
           # @return [String, nil] HTML text when no path was supplied
-          def write_html(summaries:, metrics:, weighted_score:, path:)
-            document = HTML.render(summaries, metrics:, weighted_score:)
+          def write_html(json:, path:)
+            report = JSON.decode(json, providers: @providers)
+            document = HTML.render(report)
             if path
               FileUtils.mkdir_p(File.dirname(path))
               File.write(path, document)
@@ -108,18 +107,16 @@ module Agent
 
           private
 
-          def render_browser(report, metrics:, weighted_score:, stamp:, open:)
+          def render_browser(report, stamp:, open:)
             FileUtils.mkdir_p(@destination)
             html_path = artifact_path(@destination, stamp, "html")
             css_path = artifact_path(@destination, stamp, "css")
             js_path = artifact_path(@destination, stamp, "js")
             File.write(css_path, File.read(File.join(HTML::TEMPLATE_DIRECTORY, "html_report.css")))
             File.write(js_path, File.read(File.join(HTML::TEMPLATE_DIRECTORY, "html_report.js")))
-            html = HTML.render(report.summaries,
-              metrics:,
-              weighted_score:,
+            html = HTML.render(report,
               stylesheet_path: File.basename(css_path),
-              script_path: File.basename(js_path))
+              script_path:     File.basename(js_path))
             File.write(html_path, html)
             browser_opened = @runtime.browse(URI::DEFAULT_PARSER.escape("file://#{html_path}")) if open
             [html_path, css_path, js_path, browser_opened]

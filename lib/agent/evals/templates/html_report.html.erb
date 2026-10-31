@@ -8,19 +8,36 @@
   </head>
   <body>
     <main>
-      <h1><%= escape(report_title) %></h1>
-      <p class="muted"><%= escape(configuration_name) %> · generated <%= Time.now.strftime("%Y-%m-%d %H:%M %Z") %></p>
+      <header class="report-header" id="overview">
+        <div>
+          <p class="eyebrow">Evaluation report</p>
+          <h1><%= escape(report_title) %></h1>
+          <p class="muted"><%= escape(configuration_name) %> · generated <%= Time.now.strftime("%Y-%m-%d %H:%M %Z") %></p>
+        </div>
+        <a class="top-link" href="#overview" aria-label="Back to report overview">↑ Top</a>
+      </header>
+
+      <nav class="section-nav" aria-label="Report sections">
+        <a href="#overview">Overview</a>
+        <a href="#standings">Standings</a>
+        <a href="#coverage">Coverage</a>
+        <% datasets.each_with_index do |dataset, index| %>
+          <a href="#dataset-<%= index + 1 %>"><%= escape(dataset[:name]) %></a>
+        <% end %>
+      </nav>
 
       <section class="health" aria-label="Run health">
         <div class="stat"><b><%= health[:successful] %>/<%= health[:total] %></b><span>model calls scored</span></div>
         <div class="stat"><b><%= health[:failed] %></b><span>failed calls</span></div>
+        <div class="stat"><b>↓ <%= health[:input_tokens] %></b><span>tokens in</span></div>
+        <div class="stat"><b>↑ <%= health[:output_tokens] %></b><span>tokens out</span></div>
         <div class="stat"><b><%= health[:cost] %></b><span>recorded cost</span></div>
       </section>
       <% if health[:failed].positive? %>
         <p class="notice">This run has failed or unscored cases. A global leader requires full, error-free coverage.</p>
       <% end %>
 
-      <section>
+      <section id="standings">
         <h2>Global standings across all cases in this run</h2>
         <p class="muted"><%= escape(weight_description) %></p>
 
@@ -57,6 +74,8 @@
                   <th><span>Model</span><span>(ID and settings)</span></th>
                   <th><span>Weighted</span><span>score</span></th>
                   <th><span>Primary score</span><span>(<%= escape(primary_metric) %>)</span></th>
+                  <th title="Input tokens"><span>↓ Tokens in</span><span>(input)</span></th>
+                  <th title="Output tokens"><span>↑ Tokens out</span><span>(output)</span></th>
                   <th class="standings-bar"><span>Score</span><span>bar</span></th>
                 </tr>
               </thead>
@@ -68,6 +87,7 @@
                   <tr>
                     <td><span class="provider"><%= provider %></span></td><td><span class="model-id"><%= model %></span> <span class="standings-settings">(<%= effort_label(entry[:model]) %>, t=<%= temperature_label(entry[:model]) %>)</span></td>
                     <td><%= weighted_label %></td><td><%= percent(entry[:row][primary_metric]) %></td>
+                    <td><%= tokens(entry[:input_tokens]) %></td><td><%= tokens(entry[:output_tokens]) %></td>
                     <td class="standings-bar"><div class="track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<%= (ranking * 100).round(1) %>"><i style="width:<%= (ranking * 100).clamp(0, 100) %>%"></i></div></td>
                   </tr>
                 <% end %>
@@ -76,7 +96,7 @@
           </div>
         <% end %>
 
-        <h3>Coverage by model</h3>
+        <h3 id="coverage">Coverage by model</h3>
         <div class="scroll">
           <table class="sortable">
             <thead><tr><th>Provider</th><th>Model</th><th>Effort</th><th>Temperature</th><th>Scored</th><th>Weighted score</th><th>Errors</th><th>Cost</th></tr></thead>
@@ -96,7 +116,7 @@
         </div>
       </section>
 
-      <% datasets.each do |dataset| %>
+      <% datasets.each_with_index do |dataset, index| %>
         <% winner = dataset[:winner] %>
         <% summary = if winner
                        provider, model = model_parts(winner[:model])
@@ -104,13 +124,13 @@
                      else
                        "No complete contender"
                      end %>
-        <details class="dataset">
+        <details class="dataset" id="dataset-<%= index + 1 %>" open>
           <summary><strong><%= escape(dataset[:name]) %></strong><span><%= summary %> · <%= dataset[:case_keys].length %> cases</span></summary>
           <div class="dataset-content">
             <h3>Model scores</h3>
             <div class="scroll">
               <table class="sortable">
-                <thead><tr><th>Provider</th><th>Model</th><th>Effort</th><th>Temperature</th><th>Weighted score</th><th>Scored</th><th>Errors</th><th>Cost</th></tr></thead>
+                <thead><tr><th>Provider</th><th>Model</th><th>Effort</th><th>Temperature</th><th>Weighted score</th><th>Scored</th><th>Errors</th><th title="Input tokens">↓ Tokens in</th><th title="Output tokens">↑ Tokens out</th><th>Cost</th></tr></thead>
                 <tbody>
                   <% dataset[:entries].each do |entry| %>
                     <% provider, model = model_parts(entry[:model]) %>
@@ -119,7 +139,7 @@
                       <td><span class="provider"><%= provider %></span></td><td><span class="model-id"><%= model %></span></td>
                       <td><%= effort_label(entry[:model]) %></td><td><%= temperature_label(entry[:model]) %></td>
                       <td><%= score %></td><td><%= entry[:successful] %>/<%= entry[:total] %></td>
-                      <td><%= entry[:errors] %></td><td><%= money(entry[:cost]) %></td>
+                      <td><%= entry[:errors] %></td><td><%= tokens(entry[:input_tokens]) %></td><td><%= tokens(entry[:output_tokens]) %></td><td><%= money(entry[:cost]) %></td>
                     </tr>
                   <% end %>
                 </tbody>

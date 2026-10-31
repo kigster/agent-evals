@@ -21,7 +21,7 @@ module Agent
     #     max_tokens: 4096
     #     parallelism: 4
     #   results:
-    #     autosave: true           # completed runs are saved as JSON
+    #     autosave: true           # completed runs are saved as JSON (default)
     #     destination: ./evals/results/
     #     temp_dir: ./tmp           # temporary JSON used when autosave is off
     #     display: browser          # none, tui or browser
@@ -122,7 +122,7 @@ module Agent
         section = @data.fetch("results", {})
         raise Error, "#{path}: results must be a mapping" unless section.is_a?(Hash)
 
-        autosave = section.fetch("autosave", false)
+        autosave = section.fetch("autosave", true)
         unless [true, false].include?(autosave)
           raise Error, "#{path}: results.autosave must be true or false"
         end
