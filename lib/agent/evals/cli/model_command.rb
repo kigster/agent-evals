@@ -29,8 +29,8 @@ module Agent
           "tok_out" => "Output tokens received, summed over the cases; reasoning tokens are included where the " \
                        "provider bills them as output.",
           "cost"    => "US dollars, as the provider reported them, summed over the cases.",
-          "score"   => "The mean of each case's overall score, as the scorer computed it. The last table ranks " \
-                       "every experiment by it."
+          "score"   => "The mean of each case's overall score, as the scorer computed it. With --scores, a table " \
+                       "ranks every experiment by it."
         }.freeze
 
         def self.inherited(subclass)
@@ -66,6 +66,10 @@ module Agent
             type:    :boolean,
             default: true,
             desc:    "Open the best experiment in the browser when done (no effect with --local)"
+          subclass.option :scores,
+            type:    :boolean,
+            default: false,
+            desc:    "Also print every experiment by score, with its cost and its tracker's link"
           subclass.option :local,
             type:    :boolean,
             default: false,
@@ -216,10 +220,11 @@ module Agent
         def warnings = @warnings ||= Warnings.new
 
         def bars(runs, summaries, concurrency)
-          ProgressBars.for(ui).run("Running #{runs.size} experiment#{"s" unless runs.size == 1}",
+          ProgressBars.for(ui, colors: model_colors).run("Running #{runs.size} experiment#{"s" unless runs.size == 1}",
             concurrent: concurrency.zero? || concurrency) do |multi|
+            labels = ProgressBars.labels(runs)
             runs.each_with_index do |run, index|
-              multi.progress(run.name, total: run.cases.size) do |bar|
+              multi.progress(labels[index], total: run.cases.size) do |bar|
                 summaries[index] = run.run(on_case: -> { bar.advance })
               end
             end
@@ -247,22 +252,23 @@ module Agent
         # @param summaries [Array<Experiment::Summary>]
         # @param output [String, nil] what -o was given: nil, "-", "" for the default file, or a path
         # @param open [Boolean]
+        # @param scores [Boolean] also print every experiment by score
         # @return [void]
-        def report(summaries, output:, open:, &details)
+        def report(summaries, output:, open:, scores: false, &details)
           path = invocation.report_path(output)
           if path
             File.open(path, "w") do |file|
               report = Dry::CLI::UI::Report.new(file)
               writing_to(report) do
                 details&.call
-                leaderboard(summaries)
+                leaderboard(summaries, scores: scores)
               end
               report.puts "Closed at #{Time.now.strftime("%Y-%m-%d %H:%M:%S %z")}"
             end
           else
             details&.call
           end
-          leaderboard(summaries)
+          leaderboard(summaries, scores: scores)
           status_box(:info, "Report written to #{relative(path)}", stream: err) if path
           save_warnings
           url = summaries.max_by { it.score || -1 }&.permalink
@@ -342,6 +348,8 @@ module Agent
 
         # Tokens, cost and the mean primary metric per contender, over every
         # dataset it ran.
+        #
+        # @return [Proc] prints its conclusions, for after everything else
         def totals(summaries)
           groups = summaries.group_by { [it.model.key, it.model.effort, it.model.temperature] }.values.map do |group|
             values = group.filter_map { it.mean(primary) }
@@ -363,9 +371,11 @@ module Agent
             header:    ["model", "effort", "temp", *("wscore" if @weighted), primary.name, "errors", "tok_in", "tok_out", "cost"],
             highlight: [best].compact,
             fill:      0)
-          value_line(" overall (#{contender_label(groups[best][:first])})", groups[best][:value], groups[best][:usage].cost_usd) if best
           winner = groups.find { it[:weighted] && it[:errors].zero? }
-          weighted_line(" overall (#{contender_label(winner[:first])})", winner[:weighted]) if @weighted && winner
+          lambda do
+            value_line(" overall (#{contender_label(groups[best][:first])})", groups[best][:value], groups[best][:usage].cost_usd) if best
+            weighted_line(" overall (#{contender_label(winner[:first])})", winner[:weighted]) if @weighted && winner
+          end
         end
 
         # What {WeightedScore} reads from one experiment.
@@ -433,10 +443,33 @@ module Agent
           end
         end
 
-        # One row per experiment, best primary metric first, or best weighted_score
-        # score when the file sets weights, with the best value per dataset; the
-        # glossary; the totals, over several datasets; and every experiment by score.
-        def leaderboard(summaries)
+        # One line per dataset's winner, each column aligned, with its model last in
+        # the color of its progress bars.
+        #
+        # @param title [String]
+        # @param summaries [Array<Experiment::Summary>]
+        # @param label [String] the name of what the block reads
+        # @yieldparam summary [Experiment::Summary]
+        # @yieldreturn [Float]
+        def winners(title, summaries, label)
+          return if summaries.empty?
+
+          rows = summaries.map { ["[#{it.dataset}]", "effort=#{it.model.effort || "default"}", "#{label}=#{percent(yield(it))}", dollars(it.usage.cost_usd)] }
+          widths = rows.transpose.map { |column| column.map(&:length).max }
+          out.puts title
+          rows.zip(summaries).each do |(dataset, effort, value, cost), summary|
+            model = summary.model.id
+            out.puts "  #{dataset.ljust(widths[0])}  #{effort.ljust(widths[1])}  #{value.rjust(widths[2])}  #{cost.rjust(widths[3])}  " \
+                     "#{pastel.public_send(model_colors[model], model)}"
+          end
+        end
+
+        def model_colors = @model_colors ||= ModelColors.new
+
+        # One row per experiment, best primary metric first, or best wscore when the
+        # file sets weights; the glossary; the totals, over several datasets; with
+        # scores, every experiment by score; and, last, the winners.
+        def leaderboard(summaries, scores: false)
           weighted = weighted_scores(summaries)
           ranked = summaries.sort_by { [it.dataset, -((@weighted ? weighted[it] : it.mean(primary)) || -1)] }
           rows = ranked.map do |s|
@@ -450,22 +483,22 @@ module Agent
             header:    ["dataset", "model", "effort", "temp", *("wscore" if @weighted), *metrics.map(&:name),
                         "errors", "time", "tok_in", "tok_out", "cost"],
             highlight: best)
-          best.each do |index|
-            s = ranked[index]
-            value_line(" [#{s.dataset}] (#{contender_label(s)})", s.mean(primary), s.usage.cost_usd)
-          end
-          ranked.group_by(&:dataset).each do |dataset, group|
-            winner = group.find { weighted[it] && it.errors.empty? }
-            weighted_line(" [#{dataset}] (#{contender_label(winner)})", weighted[winner]) if @weighted && winner
-          end
           table(glossary, header: %w[Term Description], fill: 1, wrap: true)
-          totals(summaries) if summaries.map(&:dataset).uniq.size > 1
-          scores(summaries)
+          overall = totals(summaries) if summaries.map(&:dataset).uniq.size > 1
+          scores(summaries) if scores
+          winners("Best value: the cheapest within #{(VALUE_MARGIN * 100).round} points of the best #{primary.name}",
+            best.map { ranked[it] },
+            primary.name) { it.mean(primary) }
+          if @weighted
+            leaders = ranked.group_by(&:dataset).values.filter_map { |group| group.find { weighted[it] && it.errors.empty? } }
+            winners("Best wscore: by the weights in weighted_score", leaders, "wscore") { weighted[it] }
+          end
+          overall&.call
         end
 
-        # @return [Array<Array(String, String)>] the metrics' descriptions, then the gem's columns
+        # @return [Array<Array(String, String)>] the metrics' descriptions, then the gem's columns, less any a metric took the name of
         def glossary
-          described = metrics.map { [it.name, it.description.to_s.empty? ? "(no description)" : it.description] } + GLOSSARY.to_a
+          described = metrics.map { [it.name, it.description.to_s.empty? ? "(no description)" : it.description] } + GLOSSARY.reject { |term, _| metrics.any? { it.name == term } }.to_a
           @weighted ? [["wscore", @weighted.description], *described] : described
         end
       end

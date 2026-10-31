@@ -18,5 +18,5 @@ RSpec.describe "agent-evals.gemspec" do
 
   it { expect(runtime).to include("logger", "dry-cli", "dry-cli-ui", "zeitwerk", "dotenv") }
   it { expect(runtime).not_to include("ruby_llm", "braintrust") }
-  it { expect(gemspec.executables).to eq(["agent-evals"]) }
+  it { expect(gemspec.executables).to eq(["aeva", "agent-evals"]) }
 end

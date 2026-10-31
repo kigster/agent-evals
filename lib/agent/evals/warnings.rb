@@ -5,8 +5,8 @@ require "logger"
 module Agent
   module Evals
     # Everything a run would otherwise print as a warning while its progress
-    # bars redraw: cases that failed, and what Braintrust, RubyLLM and Ruby
-    # itself log. Printed among the bars, each one breaks the redraw; collected
+    # bars redraw: cases that failed, and what Braintrust, RubyLLM, OpenTelemetry
+    # (whose exporters report failures on $stdout) and Ruby itself log. Printed among the bars, each one breaks the redraw; collected
     # here, they are saved to one file, and the run prints only how many.
     #
     # It quacks as an IO, so a Logger, and $stderr, can write to it. Threads
@@ -77,11 +77,14 @@ module Agent
       def redirect_loggers(logger)
         braintrust = defined?(Braintrust::Log) ? Braintrust::Log.logger : nil
         ruby_llm = defined?(RubyLLM) ? RubyLLM.instance_variable_get(:@logger) : nil
+        open_telemetry = defined?(OpenTelemetry) ? OpenTelemetry.logger : nil
         Braintrust::Log.logger = logger if defined?(Braintrust::Log)
         RubyLLM.instance_variable_set(:@logger, logger) if defined?(RubyLLM)
+        OpenTelemetry.logger = logger if defined?(OpenTelemetry)
         lambda do
           Braintrust::Log.logger = braintrust if defined?(Braintrust::Log)
           RubyLLM.instance_variable_set(:@logger, ruby_llm) if defined?(RubyLLM)
+          OpenTelemetry.logger = open_telemetry if defined?(OpenTelemetry)
         end
       end
     end
