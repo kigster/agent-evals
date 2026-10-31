@@ -266,6 +266,117 @@ RSpec.describe Agent::Evals::Launcher do
     end
   end
 
+  context "with config-driven result snapshots" do
+    let(:dir) { Dir.mktmpdir }
+    let(:config_path) { File.join(dir, "lineup.yml") }
+    let(:destination) { File.join(dir, "saved-results") }
+    let(:run_options) { JSON.parse(File.read(Dir[File.join(destination, "*.json")].fetch(0))).fetch("run_options") }
+    let(:argv) do
+      ["compare", "--config", config_path, "-m", "fake/echo", "-d", "colors", "-c", "clear/001",
+       "-e", "high", "-t", "0.7", "--local", "--no-open"]
+    end
+
+    before do
+      File.write(config_path, <<~YAML)
+        project: cli-options
+        request_types: [prompt]
+        results:
+          autosave: true
+          destination: #{destination}
+          temp_dir: #{File.join(dir, "configured-tmp")}
+          display: none
+      YAML
+      allow(Dry::CLI::UI::Invocation).to receive(:root).and_return(dir)
+    end
+
+    after { FileUtils.remove_entry(dir) }
+
+    it "saves the parsed flags and effective experiment settings in the JSON" do
+      run_cli
+
+      expect(kernel).to have_received(:exit).with(0)
+      expect(run_options).to include(
+        "command" => "compare",
+        "cli"     => hash_including(
+          "models"      => ["fake/echo"],
+          "dataset"     => ["colors"],
+          "case"        => ["clear/001"],
+          "effort"      => "high",
+          "temperature" => "0.7",
+          "local"       => true
+        ),
+        "results" => hash_including("autosave" => true, "display" => "none", "destination" => destination)
+      )
+      expect(run_options.fetch("effective")).to include(
+        "cases"      => { "colors" => ["clear/001"] },
+        "contenders" => array_including(hash_including(
+          "model" => "fake/echo", "provider" => "fake", "effort" => "high", "temperature" => 0.7, "max_tokens" => 4096
+        ))
+      )
+    end
+  end
+
+  context "with CLI result settings overriding the config" do
+    let(:dir) { Dir.mktmpdir }
+    let(:config_path) { File.join(dir, "lineup.yml") }
+    let(:configured_destination) { File.join(dir, "configured-results") }
+    let(:overridden_destination) { File.join(dir, "overridden-results") }
+    let(:argv) do
+      ["compare", "--config", config_path, "-m", "fake/echo", "-d", "colors", "-c", "clear/001",
+       "--local", "--no-open", "--autosave", "--destination", overridden_destination]
+    end
+
+    before do
+      File.write(config_path, <<~YAML)
+        request_types: [prompt]
+        results:
+          autosave: false
+          destination: #{configured_destination}
+          display: none
+      YAML
+      allow(Dry::CLI::UI::Invocation).to receive(:root).and_return(dir)
+    end
+
+    after { FileUtils.remove_entry(dir) }
+
+    it "uses the CLI autosave and destination values" do
+      run_cli
+
+      expect(Dir[File.join(overridden_destination, "*.json")]).to have_attributes(size: 1)
+      expect(Dir[File.join(configured_destination, "*.json")]).to be_empty
+      expect(stderr.string).to include(overridden_destination)
+    end
+  end
+
+  context "with CLI display and temp directory overrides" do
+    let(:dir) { Dir.mktmpdir }
+    let(:config_path) { File.join(dir, "lineup.yml") }
+    let(:temp_dir) { File.join(dir, "overridden-tmp") }
+    let(:argv) do
+      ["compare", "--config", config_path, "-m", "fake/echo", "-d", "colors", "-c", "clear/001",
+       "--local", "--no-open", "--display", "tui", "--no-autosave", "--temp-dir", temp_dir]
+    end
+
+    before do
+      File.write(config_path, <<~YAML)
+        request_types: [prompt]
+        results:
+          autosave: true
+          destination: #{File.join(dir, "configured-results")}
+          temp_dir: #{File.join(dir, "configured-tmp")}
+          display: none
+      YAML
+    end
+
+    after { FileUtils.remove_entry(dir) }
+
+    it "renders the TUI from a temporary JSON snapshot and removes the snapshot" do
+      expect(run_cli).to include("Best value", "fake/echo")
+      expect(Dir[File.join(temp_dir, "*")]).to be_empty
+      expect(Dir[File.join(dir, "configured-results", "*.json")]).to be_empty
+    end
+  end
+
   context "with render of a saved JSON report" do
     let(:dir) { Dir.mktmpdir }
     let(:json_path) { File.join(dir, "results.json") }

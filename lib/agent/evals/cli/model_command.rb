@@ -147,8 +147,9 @@ module Agent
               datasets:,
               cases:         runs.group_by(&:dataset).transform_values { |dataset_runs| dataset_runs.flat_map { it.cases.map(&:id) }.uniq },
               contenders:    contenders.map do |contender|
-                { model: contender.model, provider: providers.for(contender).name, effort: contender.effort,
-                  temperature: contender.temperature, max_tokens: contender.max_tokens }
+                settings = contender.settings
+                { model: contender.model, provider: providers.for(contender).name, effort: settings[:effort],
+                  temperature: settings[:temperature], max_tokens: settings[:max_tokens] }
               end,
               defaults:      config.defaults,
               parallelism:   Integer(options[:parallelism] || config.defaults["parallelism"]),
