@@ -43,11 +43,13 @@ module Agent
         # Stands between a label's fixed columns and its model.
         MODEL_SEPARATOR = " | "
 
-        # What a model can be drawn in. More models than these share them.
-        MODEL_COLORS = %i[bright_red bright_green bright_yellow bright_blue bright_magenta bright_cyan bright_white].freeze
+        attr_writer :model_colors
 
         # @param console [Dry::CLI::UI::Console] the command's ui, whose stream, clock and settings it draws with
-        def self.for(console) = new(console.send(:err), clock: console.send(:clock), config: console.send(:config))
+        # @param colors [ModelColors] shared with whatever else draws the models
+        def self.for(console, colors: ModelColors.new)
+          new(console.send(:err), clock: console.send(:clock), config: console.send(:config)).tap { it.model_colors = colors }
+        end
 
         # One label per experiment, the dataset and the settings each padded to
         # the widest of its column, so that every model starts in one column:
@@ -80,13 +82,7 @@ module Agent
           text.sub(/(?<=#{Regexp.escape(MODEL_SEPARATOR)})\S+/) { terminal.pastel.public_send(model_colors[it], it) }
         end
 
-        # @return [Hash{String => Symbol}] each model's color, given when first drawn
-        def model_colors
-          @model_colors ||= begin
-            palette = MODEL_COLORS.shuffle
-            Hash.new { |colors, model| colors[model] = palette[colors.size % palette.size] }
-          end
-        end
+        def model_colors = @model_colors ||= ModelColors.new
 
         # The running jobs and those just finished, in the order declared. The
         # finished get at most half the rows, newest first: when jobs end

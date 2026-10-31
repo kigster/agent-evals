@@ -216,7 +216,7 @@ module Agent
         def warnings = @warnings ||= Warnings.new
 
         def bars(runs, summaries, concurrency)
-          ProgressBars.for(ui).run("Running #{runs.size} experiment#{"s" unless runs.size == 1}",
+          ProgressBars.for(ui, colors: model_colors).run("Running #{runs.size} experiment#{"s" unless runs.size == 1}",
             concurrent: concurrency.zero? || concurrency) do |multi|
             labels = ProgressBars.labels(runs)
             runs.each_with_index do |run, index|
@@ -434,6 +434,29 @@ module Agent
           end
         end
 
+        # One line per dataset's winner, each column aligned, with its model last in
+        # the color of its progress bars.
+        #
+        # @param title [String]
+        # @param summaries [Array<Experiment::Summary>]
+        # @param label [String] the name of what the block reads
+        # @yieldparam summary [Experiment::Summary]
+        # @yieldreturn [Float]
+        def winners(title, summaries, label)
+          return if summaries.empty?
+
+          rows = summaries.map { ["[#{it.dataset}]", "effort=#{it.model.effort || "default"}", "#{label}=#{percent(yield(it))}", dollars(it.usage.cost_usd)] }
+          widths = rows.transpose.map { |column| column.map(&:length).max }
+          out.puts title
+          rows.zip(summaries).each do |(dataset, effort, value, cost), summary|
+            model = summary.model.id
+            out.puts "  #{dataset.ljust(widths[0])}  #{effort.ljust(widths[1])}  #{value.rjust(widths[2])}  #{cost.rjust(widths[3])}  " \
+                     "#{pastel.public_send(model_colors[model], model)}"
+          end
+        end
+
+        def model_colors = @model_colors ||= ModelColors.new
+
         # One row per experiment, best primary metric first, or best weighted_score
         # score when the file sets weights, with the best value per dataset; the
         # glossary; the totals, over several datasets; and every experiment by score.
@@ -451,13 +474,12 @@ module Agent
             header:    ["dataset", "model", "effort", "temp", *("wscore" if @weighted), *metrics.map(&:name),
                         "errors", "time", "tok_in", "tok_out", "cost"],
             highlight: best)
-          best.each do |index|
-            s = ranked[index]
-            value_line(" [#{s.dataset}] (#{contender_label(s)})", s.mean(primary), s.usage.cost_usd)
-          end
-          ranked.group_by(&:dataset).each do |dataset, group|
-            winner = group.find { weighted[it] && it.errors.empty? }
-            weighted_line(" [#{dataset}] (#{contender_label(winner)})", weighted[winner]) if @weighted && winner
+          winners("Best value: the cheapest within #{(VALUE_MARGIN * 100).round} points of the best #{primary.name}",
+            best.map { ranked[it] },
+            primary.name) { it.mean(primary) }
+          if @weighted
+            leaders = ranked.group_by(&:dataset).values.filter_map { |group| group.find { weighted[it] && it.errors.empty? } }
+            winners("Best wscore: by the weights in weighted_score", leaders, "wscore") { weighted[it] }
           end
           table(glossary, header: %w[Term Description], fill: 1, wrap: true)
           totals(summaries) if summaries.map(&:dataset).uniq.size > 1
