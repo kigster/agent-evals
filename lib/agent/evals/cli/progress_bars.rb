@@ -43,6 +43,7 @@ module Agent
 
         private
 
+        # @return [Integer]
         def label_width = [LABEL_WIDTH, title.length, *jobs.map { it.label.length }].max + INDENT.length
 
         def rows
