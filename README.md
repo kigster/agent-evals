@@ -1,4 +1,4 @@
-# Agent Evals (`agent-evals`)
+# Agent Evals (`agent-evals` or `aeva`)
 
 [![Gem Version](https://badge.fury.io/rb/agent-evals.svg)](https://rubygems.org/gems/agent-evals) [![CircleCI](https://dl.circleci.com/status-badge/img/gh/kigster/agent-evals/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/kigster/agent-evals/tree/main) ![coverage](docs/badges/coverage-badge.svg)
 
@@ -36,7 +36,7 @@ Every LLM project grows its own eval script, and every one of them rebuilds the 
 The bundled toy suite, run against two fake models (no network):
 
 ```text
-$ agent-evals compare --local
+$ aeva compare --local
 ┌─────────┬─────────────┬─────────┬────────────────┬─────────────┬───────────┬────────┬─────────┐
 │ dataset │ model       │ effort  │ field_accuracy │ exact_match │ restraint │ errors │    cost │
 ├─────────┼─────────────┼─────────┼────────────────┼─────────────┼───────────┼────────┼─────────┤
@@ -88,7 +88,7 @@ The recipes `cd` into the suite's folder for you and, for the config-only suite,
 `agent-evals` finds its suite by searching **upward from the current directory** for `evals/eval_helper.rb` or `evals/.agent-eval.config.yml`. The repository root has neither, so running there fails:
 
 ```text
-$ bundle exec exe/agent-evals cases
+$ bundle exec exe/aeva cases
 error: no suite is configured: register an adapter and a scorer in evals/eval_helper.rb, ...
 ```
 
@@ -104,7 +104,7 @@ You can run both of them from the gem source's root folder by using `just`:
 just examples
 ```
 
-You should see the header for "Toy Suite" and then for "Config Only Suite".
+You should see the header for "Toy Suite," then for "Config Only Suite."
 
 You can run individual examples with `just toy` and `just config-only`.
 
@@ -120,19 +120,19 @@ But it helps to understand what's happening under the hood.
 cd spec/fixtures/toy_suite
 
 # List the 8 cases (2 datasets × 2 variants × 2 cases); calls nothing.
-bundle exec agent-evals cases
+bundle exec aeva cases
 
 # Offline checks of inputs, expected.json, the adapter and the scorer.
-bundle exec agent-evals verify
+bundle exec aeva verify
 
 # Show the experiment matrix the lineup expands into; calls nothing.
-bundle exec agent-evals compare -n
+bundle exec aeva compare -n
 
 # One model, one dataset, with the per-case breakdown.
-bundle exec agent-evals run -m fake/echo -d animals --local
+bundle exec aeva run -m fake/echo -d animals --local
 
 # Every model in the lineup, leaderboard only.
-bundle exec agent-evals compare --local
+bundle exec aeva compare --local
 ```
 
 The same commands work from the repository root with `--helper`:
@@ -158,8 +158,8 @@ The same suite, with the adapter and scorer named in `.agent-eval.config.yml` in
 
 ```bash
 cd spec/fixtures/config_only_suite
-RUBYLIB=../toy_suite/lib bundle exec agent-evals cases
-RUBYLIB=../toy_suite/lib bundle exec agent-evals compare --local
+RUBYLIB=../toy_suite/lib bundle exec aeva cases
+RUBYLIB=../toy_suite/lib bundle exec aeva compare --local
 ```
 
 Without `RUBYLIB` the run stops with `require: toy_suite/evals could not be loaded ... is its gem in the bundle?`.
@@ -415,18 +415,18 @@ A contender runs only when its provider's type is in the suite's list. Otherwise
 ## The command line
 
 ```bash
-agent-evals cases                              # list the cases, no calls
-agent-evals verify                             # offline checks: inputs, expected.json, adapter, scorer
-agent-evals run -m openai/gpt-4.1-mini         # one model, every dataset, per-case breakdown
-agent-evals run -m anthropic/claude-haiku-5.5 -e low -d vague -c vague/00
-agent-evals run --local -o                     # no remote tracker; the breakdowns go to log/
-agent-evals compare                            # everything the lineup lists, leaderboard only
-agent-evals compare                         # uses results.display
-agent-evals compare --format html -o report.html
-agent-evals compare --format json -o results.json # save every result for later rendering
-agent-evals render results.json -o report.html # render saved results; no model calls
-agent-evals compare -n                         # show that matrix, call nothing
-agent-evals completion zsh                     # shell completion (bash too)
+aeva cases                              # list the cases, no calls
+aeva verify                             # offline checks: inputs, expected.json, adapter, scorer
+aeva run -m openai/gpt-4.1-mini         # one model, every dataset, per-case breakdown
+aeva run -m anthropic/claude-haiku-5.5 -e low -d vague -c vague/00
+aeva run --local -o                     # no remote tracker; the breakdowns go to log/
+aeva compare                            # everything the lineup lists, leaderboard only
+aeva compare                         # uses results.display
+aeva compare --format html -o report.html
+aeva compare --format json -o results.json # save every result for later rendering
+aeva render results.json -o report.html # render saved results; no model calls
+aeva compare -n                         # show that matrix, call nothing
+aeva completion zsh                     # shell completion (bash too)
 ```
 
 | Command      | Does                                                 | Calls models |
