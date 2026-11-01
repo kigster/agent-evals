@@ -19,7 +19,35 @@ module Agent
         # @param metric [Metric, String]
         # @return [Float, nil]
         def mean(metric) = means[metric.respond_to?(:name) ? metric.name : metric.to_s]
+
+        # The same experiment over one variant's cases. Its duration is the sum
+        # of those cases' own, since they overlapped with the others.
+        #
+        # @param variant [String]
+        # @param metrics [Array<Metric>] the scorer's
+        # @return [Summary]
+        def for_variant(variant, metrics)
+          chosen = results.select { it.case.variant == variant }
+          with(means:    Experiment.means(metrics, chosen),
+            results:  chosen,
+            errors:   chosen.select(&:failed?).map { "#{it.case.key}: #{it.error}" },
+            duration: chosen.sum(&:duration),
+            usage:    Experiment.usage(chosen))
+        end
       end
+
+      # @param metrics [Array<Metric>]
+      # @param results [Array<RunResult>]
+      # @return [Hash{String => Float, nil}] one mean per metric, plus "score"
+      def self.means(metrics, results)
+        scored = results.filter_map(&:score)
+        means = metrics.to_h { |metric| [metric.name, metric.combine(scored.map { it.metrics[metric.name] })] }
+        means.merge("score" => scored.empty? ? nil : scored.sum(&:value).fdiv(scored.size))
+      end
+
+      # @param results [Array<RunResult>]
+      # @return [Usage] summed over the results
+      def self.usage(results) = results.filter_map(&:reply).map(&:usage).reduce(Usage.zero, :+)
 
       attr_reader :model, :adapter, :scorer, :cases, :dataset, :parallelism, :trackers
 
@@ -113,19 +141,16 @@ module Agent
 
       def summarize(errors, permalink, duration)
         results = @lock.synchronize { @results.values }.sort_by { cases.index(it.case) }
-        scored = results.filter_map(&:score)
-        means = scorer.metrics.to_h { |metric| [metric.name, metric.combine(scored.map { it.metrics[metric.name] })] }
-        means["score"] = scored.empty? ? nil : scored.sum(&:value).fdiv(scored.size)
         Summary.new(
           model:     model,
           dataset:   dataset,
           name:      name,
-          means:     means,
+          means:     self.class.means(scorer.metrics, results),
           results:   results,
           errors:    Array(errors),
           duration:  duration,
           permalink: permalink,
-          usage:     results.filter_map(&:reply).map(&:usage).reduce(Usage.zero, :+)
+          usage:     self.class.usage(results)
         )
       end
     end

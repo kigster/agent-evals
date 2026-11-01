@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title><%= escape(report_title) %></title>
+    <%= stylesheet_tag %>
+  </head>
+  <body>
+    <main>
+      <header class="report-header" id="overview">
+        <div>
+          <p class="eyebrow">Evaluation report</p>
+          <h1><%= escape(report_title) %></h1>
+          <p class="muted"><%= escape(configuration_name) %> · generated <%= Time.now.strftime("%Y-%m-%d %H:%M %Z") %></p>
+        </div>
+        <a class="top-link" href="#overview" aria-label="Back to report overview">↑ Top</a>
+      </header>
+
+      <nav class="section-nav" aria-label="Report sections">
+        <a href="#overview">Overview</a>
+        <a href="#standings">Standings</a>
+        <a href="#coverage">Coverage</a>
+        <% datasets.each_with_index do |dataset, index| %>
+          <a href="#dataset-<%= index + 1 %>"><%= escape(dataset[:name]) %></a>
+        <% end %>
+      </nav>
+
+      <section class="health" aria-label="Run health">
+        <div class="stat"><b><%= health[:successful] %>/<%= health[:total] %></b><span>model calls scored</span></div>
+        <div class="stat"><b><%= health[:failed] %></b><span>failed calls</span></div>
+        <div class="stat"><b>↓ <%= escape(health[:input_tokens]) %></b><span>tokens in</span></div>
+        <div class="stat"><b>↑ <%= escape(health[:output_tokens]) %></b><span>tokens out</span></div>
+        <div class="stat"><b><%= health[:cost] %></b><span>recorded cost</span></div>
+      </section>
+      <% if health[:failed].positive? %>
+        <p class="notice">This run has failed or unscored cases. A global leader requires full, error-free coverage.</p>
+      <% end %>
+
+      <section id="standings">
+        <h2>Global standings across all cases in this run</h2>
+        <p class="muted"><%= escape(weight_description) %></p>
+
+        <% if standings[:leader] %>
+          <% leader = standings[:leader] %>
+          <% leader_provider, leader_model = model_parts(leader[:model]) %>
+          <div class="leader">
+            <span class="eyebrow">ALL-CASE LEADER</span>
+            <strong><span class="provider"><%= leader_provider %></span>/<span class="model-id"><%= leader_model %></span></strong>
+            <span><%= percent(ranking_value(leader)) %> · Effort <%= effort_label(leader[:model]) %> · Temperature <%= temperature_label(leader[:model]) %> · <%= leader[:successful] %>/<%= standings[:expected_count] %> cases · <%= money(leader[:cost]) %></span>
+          </div>
+        <% else %>
+          <% best_coverage = standings[:best_coverage] %>
+          <div class="leader none">
+            <span class="eyebrow">ALL-CASE LEADER</span>
+            <strong>No leader established</strong>
+            <% if best_coverage %>
+              <% best_provider, best_model = model_parts(best_coverage[:model]) %>
+              <span>No contender covered all <%= standings[:expected_count] %> cases without failures. Best coverage: <%= best_coverage[:successful] %>/<%= standings[:expected_count] %> from <span class="provider"><%= best_provider %></span>/<span class="model-id"><%= best_model %></span> (effort <%= effort_label(best_coverage[:model]) %>, temperature <%= temperature_label(best_coverage[:model]) %>).</span>
+            <% else %>
+              <span>No model results are available for ranking.</span>
+            <% end %>
+          </div>
+        <% end %>
+
+        <% if standings[:ranked].empty? %>
+          <p class="muted">No fully covered contenders to plot.</p>
+        <% else %>
+          <div class="scroll">
+            <table class="sortable standings-table" aria-label="Model standings, initially ordered highest score first">
+              <thead>
+                <tr>
+                  <th><span>Provider</span><span>(vendor)</span></th>
+                  <th><span>Model</span><span>(ID and settings)</span></th>
+                  <th><span>Weighted</span><span>score</span></th>
+                  <th><span>Primary score</span><span>(<%= escape(primary_metric) %>)</span></th>
+                  <th title="Input tokens"><span>↓ Tokens in</span><span>(input)</span></th>
+                  <th title="Output tokens"><span>↑ Tokens out</span><span>(output)</span></th>
+                  <th class="standings-bar"><span>Score</span><span>bar</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <% standings[:ranked].reverse_each do |entry| %>
+                  <% provider, model = model_parts(entry[:model]) %>
+                  <% ranking = ranking_value(entry).to_f %>
+                  <% weighted_label = weighted_score ? percent(ranking_value(entry)) : "—" %>
+                  <tr>
+                    <td><span class="provider"><%= provider %></span></td><td><span class="model-id"><%= model %></span> <span class="standings-settings">(<%= effort_label(entry[:model]) %>, t=<%= temperature_label(entry[:model]) %>)</span></td>
+                    <td><%= weighted_label %></td><td><%= percent(entry[:row][primary_metric]) %></td>
+                    <td><%= escape(tokens(entry[:input_tokens])) %></td><td><%= escape(tokens(entry[:output_tokens])) %></td>
+                    <td class="standings-bar"><div class="track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<%= (ranking * 100).round(1) %>"><i style="width:<%= (ranking * 100).clamp(0, 100) %>%"></i></div></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        <% end %>
+
+        <h3 id="coverage">Coverage by model</h3>
+        <div class="scroll">
+          <table class="sortable">
+            <thead><tr><th>Provider</th><th>Model</th><th>Effort</th><th>Temperature</th><th>Scored</th><th>Weighted score</th><th>Errors</th><th>Cost</th></tr></thead>
+            <tbody>
+              <% standings[:entries].sort_by { [ranking_value(it).nil? ? 1 : 0, -(ranking_value(it) || 0), -it[:successful], it[:errors]] }.each do |entry| %>
+                <% provider, model = model_parts(entry[:model]) %>
+                <% score = entry[:complete] && ranking_value(entry) ? percent(ranking_value(entry)) : "Not rankable" %>
+                <tr>
+                  <td><span class="provider"><%= provider %></span></td><td><span class="model-id"><%= model %></span></td>
+                  <td><%= effort_label(entry[:model]) %></td><td><%= temperature_label(entry[:model]) %></td>
+                  <td><%= entry[:successful] %>/<%= entry[:total] %></td><td><%= score %></td>
+                  <td><%= escape(entry[:errors]) %></td><td><%= money(entry[:cost]) %></td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <% datasets.each_with_index do |dataset, index| %>
+        <% winner = dataset[:winner] %>
+        <% summary = if winner
+                       provider, model = model_parts(winner[:model])
+                       "Leader: #{provider}/#{model} · effort #{effort_label(winner[:model])} · temperature #{temperature_label(winner[:model])} · #{percent(ranking_value(winner))}"
+                     else
+                       "No complete contender"
+                     end %>
+        <details class="dataset" id="dataset-<%= index + 1 %>" open>
+          <summary><strong><%= escape(dataset[:name]) %></strong><span><%= summary %> · <%= dataset[:case_keys].length %> cases</span></summary>
+          <div class="dataset-content">
+            <h3>Model scores</h3>
+            <div class="scroll">
+              <table class="sortable">
+                <thead><tr><th>Provider</th><th>Model</th><th>Effort</th><th>Temperature</th><th>Weighted score</th><th>Scored</th><th>Errors</th><th title="Input tokens">↓ Tokens in</th><th title="Output tokens">↑ Tokens out</th><th>Cost</th></tr></thead>
+                <tbody>
+                  <% dataset[:entries].each do |entry| %>
+                    <% provider, model = model_parts(entry[:model]) %>
+                    <% score = entry[:complete] ? percent(ranking_value(entry)) : "Not rankable" %>
+                    <tr>
+                      <td><span class="provider"><%= provider %></span></td><td><span class="model-id"><%= model %></span></td>
+                      <td><%= effort_label(entry[:model]) %></td><td><%= temperature_label(entry[:model]) %></td>
+                      <td><%= score %></td><td><%= entry[:successful] %>/<%= entry[:total] %></td>
+                      <td><%= escape(entry[:errors]) %></td><td><%= escape(tokens(entry[:input_tokens])) %></td><td><%= escape(tokens(entry[:output_tokens])) %></td><td><%= money(entry[:cost]) %></td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+            <h3>Cases</h3>
+            <% dataset[:cases].each do |case_result| %>
+              <% kase = case_result.case %>
+              <% runs = case_results(kase, dataset[:summaries]) %>
+              <details class="case">
+                <summary><strong><%= escape(kase.id) %></strong><span><%= escape(kase.variant) %> · difficulty <%= escape(kase.difficulty) %></span></summary>
+                <div class="case-content">
+                  <details>
+                    <summary>Input and expected answer</summary>
+                    <h4>Input</h4><pre><%= escape(kase.input) %></pre>
+                    <h4>Expected</h4><pre><%= escape(kase.expected.nil? ? "No expected answer" : pretty(kase.expected)) %></pre>
+                  </details>
+                  <div class="scroll">
+                    <table class="sortable">
+                      <thead><tr><th>Provider</th><th>Model</th><th>Effort</th><th>Temperature</th><th>Score / status</th><th>Diagnostics</th></tr></thead>
+                      <tbody>
+                        <% runs.each do |run_result| %>
+                          <% provider, model = model_parts(run_result[:run].experiment.model) %>
+                          <tr>
+                            <td><span class="provider"><%= provider %></span></td><td><span class="model-id"><%= model %></span></td>
+                            <td><%= effort_label(run_result[:run].experiment.model) %></td><td><%= temperature_label(run_result[:run].experiment.model) %></td>
+                            <td><%= escape(run_result[:status]) %></td><td><pre><%= escape(pretty(run_result[:details])) %></pre></td>
+                          </tr>
+                        <% end %>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </details>
+            <% end %>
+          </div>
+        </details>
+      <% end %>
+    </main>
+    <%= script_tag %>
+  </body>
+</html>

@@ -63,10 +63,16 @@ module Agent
       def capture
         logger = Logger.new(self, level: Logger::WARN)
         stderr = $stderr
+        kernel_warn = Kernel.instance_method(:warn)
+        warnings = self
         restore = redirect_loggers(logger)
         $stderr = self
+        Kernel.define_method(:warn) { |*messages, **_options| warnings.write(messages.join("\n")) }
+        Kernel.send(:private, :warn)
         yield
       ensure
+        Kernel.define_method(:warn, kernel_warn) if kernel_warn
+        Kernel.send(:private, :warn)
         restore&.call
         $stderr = stderr
       end

@@ -102,6 +102,40 @@ RSpec.describe Agent::Evals::Config do
     end
   end
 
+  describe "#results" do
+    it "provides compatible defaults when the results section is absent" do
+      expect(config.results).to have_attributes(autosave: true, display_mode: "tui")
+      expect(config.results.destination).to eq(File.expand_path("evals/results", Dir.pwd))
+      expect(config.results.temp_dir).to eq(File.expand_path("tmp", Dir.pwd))
+    end
+
+    it "reads autosave, directories and display from the config" do
+      File.write(path, <<~YAML)
+        results:
+          autosave: true
+          destination: ./custom/results
+          temp_dir: ./custom/tmp
+          display: browser
+      YAML
+
+      expect(config.results).to have_attributes(autosave: true, display_mode: "browser")
+      expect(config.results.destination).to eq(File.expand_path("custom/results", Dir.pwd))
+      expect(config.results.temp_dir).to eq(File.expand_path("custom/tmp", Dir.pwd))
+    end
+
+    it "rejects unsupported display modes" do
+      File.write(path, "results:\n  display: terminal\n")
+
+      expect { config.results }.to raise_error(Agent::Evals::Error, /display must be one of none, tui, browser/)
+    end
+
+    it "requires autosave to be a boolean" do
+      File.write(path, "results:\n  autosave: enabled\n")
+
+      expect { config.results }.to raise_error(Agent::Evals::Error, /autosave must be true or false/)
+    end
+  end
+
   describe "#request_types" do
     it "reads the declared types as symbols" do
       File.write(path, "request_types: [prompt, typesafe]\n")

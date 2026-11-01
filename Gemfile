@@ -14,6 +14,7 @@ gem "ruby_llm", "~> 2.1"
 group :development, :test do
   gem "aruba", "~> 2.4"
   gem "bundler-audit", "~> 0.9"
+  gem "coverage-badge"
   gem "erb", "~> 6.0.4"
   gem "rake", "~> 13.0"
   gem "rspec", "~> 3.13"

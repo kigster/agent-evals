@@ -78,6 +78,6 @@ end
 require_relative "evals/version"
 
 loader = Zeitwerk::Loader.for_gem_extension(Agent)
-loader.inflector.inflect("cli" => "CLI")
+loader.inflector.inflect("cli" => "CLI", "html" => "HTML", "json" => "JSON")
 loader.ignore(File.expand_path("evals/version.rb", __dir__))
 loader.setup

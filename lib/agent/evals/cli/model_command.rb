@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "pathname"
+require "uri"
 
 module Agent
   module Evals
@@ -70,6 +71,24 @@ module Agent
             type:    :boolean,
             default: false,
             desc:    "Also print every experiment by score, with its cost and its tracker's link"
+          subclass.option :totals,
+            values:  %w[overall variant both],
+            default: "overall",
+            desc:    "Group TUI totals by overall results, case variant or both"
+          subclass.option :format,
+            values: %w[tui html json],
+            desc:   "Override the configured display: tui, html or json"
+          subclass.option :display,
+            values: %w[none tui browser],
+            desc:   "Override results.display from the lineup"
+          subclass.option :autosave,
+            type:    :boolean,
+            default: nil,
+            desc:    "Save a JSON snapshot regardless of results.autosave"
+          subclass.option :destination,
+            desc: "Override results.destination"
+          subclass.option :temp_dir,
+            desc: "Override results.temp_dir"
           subclass.option :local,
             type:    :boolean,
             default: false,
@@ -91,7 +110,7 @@ module Agent
         def scorer = configuration.scorer
 
         # @return [Array<Metric>]
-        def metrics = scorer.metrics
+        def metrics = @report_metrics || scorer.metrics
 
         # Reads the file's weights before anything is spent, so a bad one fails
         # the run rather than the report at its end.
@@ -99,6 +118,7 @@ module Agent
         # @return [WeightedScore, nil] nil when the file sets none
         # @raise [Error] on a bad weight
         def weigh(config)
+          config.results # validate output settings before model calls start
           weights = config.score_weights
           @weighted = weights.empty? ? nil : WeightedScore.new(weights, metrics: metrics.map(&:name))
         end
@@ -117,6 +137,31 @@ module Agent
             parallelism: Integer(options[:parallelism] || config.defaults["parallelism"]),
             trackers:    trackers_for(config, options)
           )
+        end
+
+        # Captures the parsed flags and the settings that actually reached the
+        # experiments. The former preserves the invocation; the latter records
+        # defaults and expanded case/model selections that were implicit.
+        def serialize_run_options(config:, contenders:, datasets:, runs:, models:, dataset:, options:)
+          {
+            command:   invocation.action.to_s,
+            cli:       { models:, dataset:, **options },
+            effective: {
+              project:       options[:project] || config.project || configuration.project || configuration.name,
+              request_types: config.request_types.map(&:to_s),
+              datasets:,
+              cases:         runs.group_by(&:dataset).transform_values { |dataset_runs| dataset_runs.flat_map { it.cases.map(&:id) }.uniq },
+              contenders:    contenders.map do |contender|
+                settings = contender.settings
+                { model: contender.model, provider: providers.for(contender).name, effort: settings[:effort],
+                  temperature: settings[:temperature], max_tokens: settings[:max_tokens] }
+              end,
+              defaults:      config.defaults,
+              parallelism:   Integer(options[:parallelism] || config.defaults["parallelism"]),
+              concurrency:   concurrency(options),
+              tracker:       options[:local] ? "none" : remote_tracker(config, options)&.tracker_name
+            }
+          }
         end
 
         # The local JSON log, always, then the one remote tracker if any,
@@ -245,34 +290,117 @@ module Agent
         # the scores; then says where the warnings went, if any, and opens the
         # best-scoring experiment.
         #
-        # With -o, the block's output goes to the file alone, and the rest to
-        # both, each drawn for its own stream. The file is in color and ends
-        # with the time it was closed, as dry-cli-ui's own reports do.
+        # Saves or renders through {Render::Reports::Pipeline}; the configured
+        # display and autosave policy are independent of model execution.
         #
         # @param summaries [Array<Experiment::Summary>]
         # @param output [String, nil] what -o was given: nil, "-", "" for the default file, or a path
         # @param open [Boolean]
         # @param scores [Boolean] also print every experiment by score
+        # @param format [String] `tui`, `html` or `json`
         # @return [void]
-        def report(summaries, output:, open:, scores: false, &details)
-          path = invocation.report_path(output)
-          if path
-            File.open(path, "w") do |file|
-              report = Dry::CLI::UI::Report.new(file)
-              writing_to(report) do
-                details&.call
-                leaderboard(summaries, scores: scores)
-              end
-              report.puts "Closed at #{Time.now.strftime("%Y-%m-%d %H:%M:%S %z")}"
+        def report(summaries, config:, options:, run_options:, output:, open:, scores: false, format: nil, &details)
+          results = effective_results(config, options)
+          results[:display] = { "tui" => "tui", "none" => "none", "html" => "browser", "json" => "none" }.fetch(format, results[:display]) if format
+          snapshot_options = run_options.merge(results:)
+          pipeline = render_pipeline(results, run_options)
+
+          if format == "html"
+            json_path = if results[:autosave]
+                          pipeline.save_json(summaries:, metrics:, weighted_score: @weighted, run_options: snapshot_options)
+                        end
+            json = if json_path
+                     File.read(json_path)
+                   else
+                     pipeline.write_json(summaries:, metrics:, weighted_score: @weighted, run_options: snapshot_options, path: nil)
+                   end
+            if json_path
+              status_box(:success, "JSON results written to #{relative(json_path)}", stream: err)
             end
-          else
-            details&.call
+            path = report_output_path(output, "html")
+            document = pipeline.write_html(json:, path:)
+            path ? status_box(:success, "HTML report written to #{relative(path)}", stream: err) : out.write(document)
+            save_warnings
+            if open && path
+              url = URI::DEFAULT_PARSER.escape("file://#{path}")
+              status_box(:warning, "could not open #{path}", stream: err) unless configuration.runtime.browse(url)
+            end
+            return
           end
-          leaderboard(summaries, scores: scores)
+          if format == "json"
+            if output.nil? || output.empty?
+              path = pipeline.save_json(summaries:, metrics:, weighted_score: @weighted, run_options: snapshot_options)
+              status_box(:success, "JSON report written to #{relative(path)}", stream: err)
+            else
+              path = report_output_path(output, "json")
+              document = pipeline.write_json(summaries:, metrics:, weighted_score: @weighted, run_options: snapshot_options, path:)
+              path ? status_box(:success, "JSON report written to #{relative(path)}", stream: err) : out.write(document)
+            end
+            save_warnings
+            return
+          end
+
+          result = pipeline.call(summaries:,
+            metrics:,
+            weighted_score: @weighted,
+            run_options: snapshot_options,
+            autosave: results[:autosave],
+            display: results[:display],
+            open:) do |report|
+            @report_metrics = report.metrics
+            @weighted = report.weighted_score
+            terminal_report(report.summaries, output:, open:, scores:, totals_mode: options[:totals]) do |shown|
+              details&.call(shown)
+            end
+          end
+          if result.json_path
+            status_box(:success, "JSON results written to #{relative(result.json_path)}", stream: err)
+          end
+          if result.html_path
+            status_box(:success, "HTML report written to #{relative(result.html_path)}", stream: err)
+            status_box(:warning, "could not open #{result.html_path}", stream: err) if open && !result.browser_opened
+          end
+          save_warnings unless results[:display] == "tui"
+        end
+
+        def terminal_report(summaries, output:, open:, scores:, totals_mode:, &details)
+          terminal = Agent::Evals::Render::Reports::Terminal.new(invocation:, writing_to: method(:writing_to), leaderboard: method(:leaderboard))
+          path = terminal.call(summaries:, output:, scores:, totals_mode:, &details)
           status_box(:info, "Report written to #{relative(path)}", stream: err) if path
           save_warnings
           url = summaries.max_by { it.score || -1 }&.permalink
           status_box(:warning, "could not open #{url}", stream: err) if open && url && !configuration.runtime.browse(url)
+        end
+
+        def effective_results(config, options)
+          configured = config.results
+          {
+            autosave:    options[:autosave].nil? ? configured.autosave : options[:autosave],
+            destination: File.expand_path(options[:destination] || configured.destination),
+            temp_dir:    File.expand_path(options[:temp_dir] || configured.temp_dir),
+            display:     options[:display] || configured.display_mode
+          }
+        end
+
+        def render_pipeline(results, run_options)
+          project = run_options.dig(:effective, :project) || run_options.dig("effective", "project") || configuration.name
+          project = project.to_s.downcase.gsub(/[^a-z0-9]+/, "-").sub(/\A-/, "").sub(/-+\z/, "")
+          Agent::Evals::Render::Reports::Pipeline.new(providers:,
+            runtime: configuration.runtime,
+            destination: results[:destination],
+            temp_dir: results[:temp_dir],
+            project:)
+        end
+
+        def report_output_path(output, extension)
+          return nil if output == "-"
+
+          path = if output.nil? || output.empty?
+                   invocation.report_path("")
+                 else
+                   invocation.report_path(output)
+                 end
+          path.sub(/\.log\z/, ".#{extension}")
         end
 
         # Saves {#warnings}, if there are any, to
@@ -320,7 +448,7 @@ module Agent
 
         def dollars(value) = format("$%.4f", value.to_f)
 
-        def primary = scorer.primary
+        def primary = metrics.find(&:primary) || scorer.primary
 
         # The best value: the cheapest entry within {VALUE_MARGIN} of the best
         # primary metric. Entries with errors, or no score, do not compete. A
@@ -346,11 +474,40 @@ module Agent
 
         def temperature_cell(summary) = summary.model.temperature.nil? ? "default" : summary.model.temperature
 
-        # Tokens, cost and the mean primary metric per contender, over every
-        # dataset it ran.
+        # The selected totals view: one aggregate table, one per variant, or both.
         #
-        # @return [Proc] prints its conclusions, for after everything else
-        def totals(summaries)
+        # @return [Proc, nil] prints the conclusions over every dataset, for after
+        #   everything else; nil over a single dataset
+        def totals(summaries, mode: "overall")
+          variants = summaries.flat_map { |summary| summary.results.map { it.case.variant } }.uniq.sort
+          several_datasets = summaries.map(&:dataset).uniq.size > 1
+          has_multiple_groups = several_datasets || variants.size > 1
+          if has_multiple_groups && %w[overall both].include?(mode)
+            out.puts "[all cases]"
+            contender_table(contender_groups(summaries))
+          end
+          if has_multiple_groups && %w[variant both].include?(mode)
+            variants.each do |variant|
+              out.puts "[#{variant}]"
+              contender_table(contender_groups(summaries.map { it.for_variant(variant, metrics) }))
+            end
+          end
+          return unless several_datasets
+
+          groups = contender_groups(summaries)
+          best = best_contender(groups)
+          winner = groups.find { it[:weighted] && it[:errors].zero? }
+          lambda do
+            value_line(" overall (#{contender_label(groups[best][:first])})", groups[best][:value], groups[best][:usage].cost_usd) if best
+            weighted_line(" overall (#{contender_label(winner[:first])})", winner[:weighted]) if @weighted && winner
+          end
+        end
+
+        # Each contender's numbers over the given experiments, best first.
+        #
+        # @param summaries [Array<Experiment::Summary>]
+        # @return [Array<Hash>]
+        def contender_groups(summaries)
           groups = summaries.group_by { [it.model.key, it.model.effort, it.model.temperature] }.values.map do |group|
             values = group.filter_map { it.mean(primary) }
             { first: group.first, errors: group.sum { it.errors.size },
@@ -360,22 +517,25 @@ module Agent
           end
           weighted = weighted_by(groups.map { it[:row] })
           groups.each_with_index { |g, index| g[:weighted] = weighted[index] }
-          groups.sort_by! { -((@weighted ? it[:weighted] : it[:value]) || -1) }
+          groups.sort_by { -((@weighted ? it[:weighted] : it[:value]) || -1) }
+        end
+
+        # @param groups [Array<Hash>] from {#contender_groups}
+        # @return [Integer, nil] the index of the best value
+        def best_contender(groups) = best_value(groups.map { [it[:value], it[:usage].cost_usd, it[:errors]] })
+
+        # @param groups [Array<Hash>] from {#contender_groups}
+        # @return [void]
+        def contender_table(groups)
           rows = groups.map do |g|
             s = g[:first]
             [s.model.id, s.model.effort || "default", temperature_cell(s), *(percent(g[:weighted]) if @weighted), percent(g[:value]),
              g[:errors], g[:usage].input_tokens, g[:usage].output_tokens, dollars(g[:usage].cost_usd)]
           end
-          best = best_value(groups.map { [it[:value], it[:usage].cost_usd, it[:errors]] })
           table(rows,
             header:    ["model", "effort", "temp", *("wscore" if @weighted), primary.name, "errors", "tok_in", "tok_out", "cost"],
-            highlight: [best].compact,
+            highlight: [best_contender(groups)].compact,
             fill:      0)
-          winner = groups.find { it[:weighted] && it[:errors].zero? }
-          lambda do
-            value_line(" overall (#{contender_label(groups[best][:first])})", groups[best][:value], groups[best][:usage].cost_usd) if best
-            weighted_line(" overall (#{contender_label(winner[:first])})", winner[:weighted]) if @weighted && winner
-          end
         end
 
         # What {WeightedScore} reads from one experiment.
@@ -467,9 +627,9 @@ module Agent
         def model_colors = @model_colors ||= ModelColors.new
 
         # One row per experiment, best primary metric first, or best wscore when the
-        # file sets weights; the glossary; the totals, over several datasets; with
+        # file sets weights; the glossary; the selected totals view; with
         # scores, every experiment by score; and, last, the winners.
-        def leaderboard(summaries, scores: false)
+        def leaderboard(summaries, scores: false, totals_mode: "overall")
           weighted = weighted_scores(summaries)
           ranked = summaries.sort_by { [it.dataset, -((@weighted ? weighted[it] : it.mean(primary)) || -1)] }
           rows = ranked.map do |s|
@@ -484,7 +644,7 @@ module Agent
                         "errors", "time", "tok_in", "tok_out", "cost"],
             highlight: best)
           table(glossary, header: %w[Term Description], fill: 1, wrap: true)
-          overall = totals(summaries) if summaries.map(&:dataset).uniq.size > 1
+          overall = totals(summaries, mode: totals_mode)
           scores(summaries) if scores
           winners("Best value: the cheapest within #{(VALUE_MARGIN * 100).round} points of the best #{primary.name}",
             best.map { ranked[it] },

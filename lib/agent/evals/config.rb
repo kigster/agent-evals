@@ -20,6 +20,11 @@ module Agent
     #     temperature: 0.2
     #     max_tokens: 4096
     #     parallelism: 4
+    #   results:
+    #     autosave: true           # completed runs are saved as JSON (default)
+    #     destination: ./evals/results/
+    #     temp_dir: ./tmp           # temporary JSON used when autosave is off
+    #     display: browser          # none, tui or browser
     #   weighted_score:              # optional: what matters most; see {WeightedScore}
     #     weights:
     #       score: 0.6
@@ -43,6 +48,9 @@ module Agent
       BUILTIN = {
         "effort" => "default", "temperature" => 0.2, "max_tokens" => 4096, "parallelism" => 4
       }.freeze
+
+      Results = Data.define(:autosave, :destination, :temp_dir, :display_mode)
+      RESULT_DISPLAYS = %w[none tui browser].freeze
 
       attr_reader :path, :direct_providers
 
@@ -103,6 +111,34 @@ module Agent
 
       # @return [Hash{String => Object}] the built-in defaults under the file's own
       def defaults = BUILTIN.merge(@data.fetch("defaults", nil) || {})
+
+      # Where completed runs are saved and how they are presented. Paths are
+      # rooted at the caller's working directory so the same config works from
+      # a project root or when invoked by a task runner.
+      #
+      # @return [Results]
+      # @raise [Error] when a setting has the wrong type or an unknown display
+      def results
+        section = @data.fetch("results", {})
+        raise Error, "#{path}: results must be a mapping" unless section.is_a?(Hash)
+
+        autosave = section.fetch("autosave", true)
+        unless [true, false].include?(autosave)
+          raise Error, "#{path}: results.autosave must be true or false"
+        end
+
+        display = section.fetch("display", "tui").to_s
+        unless RESULT_DISPLAYS.include?(display)
+          raise Error, "#{path}: results.display must be one of #{RESULT_DISPLAYS.join(", ")}"
+        end
+
+        destination = section.fetch("destination", "./evals/results").to_s
+        temp_dir = section.fetch("temp_dir", "./tmp").to_s
+        Results.new(autosave:,
+          destination: File.expand_path(destination, Dir.pwd),
+          temp_dir: File.expand_path(temp_dir, Dir.pwd),
+          display_mode: display)
+      end
 
       # @return [Hash{String => Object}] `weighted_score.weights`; see {WeightedScore}
       # @raise [Error] when either level is not a mapping

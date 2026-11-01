@@ -47,4 +47,9 @@ RSpec.describe Agent::Evals::Warnings do
     warnings.record("a").record("b").save(path)
     expect(File.read(path)).to eq("a\n\nb\n")
   end
+
+  it "keeps every line of a multi-argument Kernel#warn" do
+    warnings.capture { warn "a", "b" }
+    expect(warnings.to_a.join("\n").lines.map(&:chomp)).to eq(%w[a b])
+  end
 end

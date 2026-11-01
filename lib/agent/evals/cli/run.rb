@@ -27,8 +27,15 @@ module Agent
           setup!(contenders, options)
           runs = datasets.flat_map { |name| contenders.map { experiment(it, config, options, dataset: name) } }
           summaries = execute(runs, concurrency: concurrency(options))
-          report(summaries, output: options[:output], open: options[:open], scores: options[:scores]) do
-            summaries.each { breakdown(it, titled: summaries.size > 1) }
+          report(summaries,
+            output:      options[:output],
+            open:        options[:open],
+            scores:      options[:scores],
+            format:      options[:format],
+            config:,
+            options:,
+            run_options: serialize_run_options(config:, contenders:, datasets:, runs:, models:, dataset:, options:)) do |display_summaries|
+            display_summaries.each { breakdown(it, titled: display_summaries.size > 1) }
           end
         end
 
