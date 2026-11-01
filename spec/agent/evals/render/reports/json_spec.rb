@@ -59,4 +59,26 @@ RSpec.describe Agent::Evals::Render::Reports::JSON do
         .to raise_error(Agent::Evals::Error, /unsupported report format version/)
     end
   end
+
+  describe ".decode errors" do
+    let(:providers) { Agent::Evals.configuration.providers }
+
+    it "rejects malformed JSON" do
+      expect { described_class.decode("{not json", providers:) }.to raise_error(Agent::Evals::Error, /invalid report JSON/)
+    end
+
+    it "rejects a report naming an unknown provider" do
+      document = { format: described_class::FORMAT, version: described_class::VERSION, metrics: [],
+                   summaries: [{ model: { id: "x/y", provider: "nowhere" }, dataset: "d", name: "n", means: {}, results: [] }] }
+      expect { described_class.decode(JSON.generate(document), providers:) }
+        .to raise_error(Agent::Evals::Error, /unknown provider "nowhere"/)
+    end
+  end
+
+  describe ".dump run options" do
+    it "stringifies symbols in nested run options" do
+      document = JSON.parse(described_class.dump([], metrics: [], run_options: { mode: :fast, list: [:a] }))
+      expect(document["run_options"]).to eq("mode" => "fast", "list" => ["a"])
+    end
+  end
 end

@@ -67,7 +67,7 @@ module Agent
         warnings = self
         restore = redirect_loggers(logger)
         $stderr = self
-        Kernel.define_method(:warn) { |*messages, **_options| warnings.write(messages.join) }
+        Kernel.define_method(:warn) { |*messages, **_options| warnings.write(messages.join("\n")) }
         Kernel.send(:private, :warn)
         yield
       ensure

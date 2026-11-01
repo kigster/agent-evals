@@ -878,4 +878,36 @@ RSpec.describe Agent::Evals::Launcher do
       it { expect(run_cli).to include("100.0%") }
     end
   end
+
+  context "with compare writing JSON to stdout" do
+    let(:dir) { Dir.mktmpdir }
+    let(:argv) { ["compare", "--format", "json", "-m", "fake/echo", "-d", "colors", "-c", "clear/001", "--local", "--no-open", "-o", "-"] }
+
+    before { allow(Dry::CLI::UI::Invocation).to receive(:root).and_return(dir) }
+
+    after { FileUtils.remove_entry(dir) }
+
+    it "prints the report instead of saving it" do
+      expect(JSON.parse(run_cli)).to include("format" => "agent-evals-report")
+      expect(stderr.string).not_to include("JSON report written to")
+    end
+  end
+
+  context "with render writing HTML to stdout" do
+    let(:dir) { Dir.mktmpdir }
+    let(:input) { File.join(dir, "results.json") }
+    let(:argv) { ["render", input, "-o", "-"] }
+
+    before do
+      allow(Dry::CLI::UI::Invocation).to receive(:root).and_return(dir)
+      File.write(input, Agent::Evals::Render::Reports::JSON.dump([], metrics: []))
+    end
+
+    after { FileUtils.remove_entry(dir) }
+
+    it "prints the HTML report" do
+      expect(run_cli).to include("<html")
+      expect(stderr.string).not_to include("HTML report written to")
+    end
+  end
 end

@@ -200,4 +200,36 @@ RSpec.describe Agent::Evals::Render::Reports::HTML do
       end
     end
   end
+
+  describe "escaping values loaded from JSON" do
+    let(:payload) { "<script>alert(1)</script>" }
+    let(:document) do
+      {
+        format: Agent::Evals::Render::Reports::JSON::FORMAT, version: Agent::Evals::Render::Reports::JSON::VERSION,
+        suite: "demo", metrics: [{ name: "accuracy", primary: true }],
+        summaries: [{
+          model: { id: "fake/echo", provider: "fake" }, dataset: "colors", name: "fake/echo",
+          means: { "accuracy" => 1.0 }, errors: [payload],
+          usage: { input_tokens: payload, output_tokens: payload },
+          results: [{
+            case: { id: "clear/001", dataset: "colors", variant: "clear", input: "in", expected: nil, metadata: { difficulty: payload } },
+            reply: { output: {}, raw: "", usage: { input_tokens: payload, output_tokens: payload } },
+            score: { value: 1, metrics: { "accuracy" => 1 } }, duration: 0.1
+          }]
+        }]
+      }
+    end
+    let(:html) do
+      providers = Agent::Evals.configuration.providers
+      described_class.render(Agent::Evals::Render::Reports::JSON.decode(JSON.generate(document), providers:))
+    end
+
+    it "never emits the injected markup" do
+      expect(html).not_to include(payload)
+    end
+
+    it "shows the difficulty escaped" do
+      expect(html).to include("difficulty #{CGI.escapeHTML(payload)}")
+    end
+  end
 end

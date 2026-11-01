@@ -29,8 +29,8 @@
       <section class="health" aria-label="Run health">
         <div class="stat"><b><%= health[:successful] %>/<%= health[:total] %></b><span>model calls scored</span></div>
         <div class="stat"><b><%= health[:failed] %></b><span>failed calls</span></div>
-        <div class="stat"><b>↓ <%= health[:input_tokens] %></b><span>tokens in</span></div>
-        <div class="stat"><b>↑ <%= health[:output_tokens] %></b><span>tokens out</span></div>
+        <div class="stat"><b>↓ <%= escape(health[:input_tokens]) %></b><span>tokens in</span></div>
+        <div class="stat"><b>↑ <%= escape(health[:output_tokens]) %></b><span>tokens out</span></div>
         <div class="stat"><b><%= health[:cost] %></b><span>recorded cost</span></div>
       </section>
       <% if health[:failed].positive? %>
@@ -87,7 +87,7 @@
                   <tr>
                     <td><span class="provider"><%= provider %></span></td><td><span class="model-id"><%= model %></span> <span class="standings-settings">(<%= effort_label(entry[:model]) %>, t=<%= temperature_label(entry[:model]) %>)</span></td>
                     <td><%= weighted_label %></td><td><%= percent(entry[:row][primary_metric]) %></td>
-                    <td><%= tokens(entry[:input_tokens]) %></td><td><%= tokens(entry[:output_tokens]) %></td>
+                    <td><%= escape(tokens(entry[:input_tokens])) %></td><td><%= escape(tokens(entry[:output_tokens])) %></td>
                     <td class="standings-bar"><div class="track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<%= (ranking * 100).round(1) %>"><i style="width:<%= (ranking * 100).clamp(0, 100) %>%"></i></div></td>
                   </tr>
                 <% end %>
@@ -108,7 +108,7 @@
                   <td><span class="provider"><%= provider %></span></td><td><span class="model-id"><%= model %></span></td>
                   <td><%= effort_label(entry[:model]) %></td><td><%= temperature_label(entry[:model]) %></td>
                   <td><%= entry[:successful] %>/<%= entry[:total] %></td><td><%= score %></td>
-                  <td><%= entry[:errors] %></td><td><%= money(entry[:cost]) %></td>
+                  <td><%= escape(entry[:errors]) %></td><td><%= money(entry[:cost]) %></td>
                 </tr>
               <% end %>
             </tbody>
@@ -139,7 +139,7 @@
                       <td><span class="provider"><%= provider %></span></td><td><span class="model-id"><%= model %></span></td>
                       <td><%= effort_label(entry[:model]) %></td><td><%= temperature_label(entry[:model]) %></td>
                       <td><%= score %></td><td><%= entry[:successful] %>/<%= entry[:total] %></td>
-                      <td><%= entry[:errors] %></td><td><%= tokens(entry[:input_tokens]) %></td><td><%= tokens(entry[:output_tokens]) %></td><td><%= money(entry[:cost]) %></td>
+                      <td><%= escape(entry[:errors]) %></td><td><%= escape(tokens(entry[:input_tokens])) %></td><td><%= escape(tokens(entry[:output_tokens])) %></td><td><%= money(entry[:cost]) %></td>
                     </tr>
                   <% end %>
                 </tbody>
@@ -150,7 +150,7 @@
               <% kase = case_result.case %>
               <% runs = case_results(kase, dataset[:summaries]) %>
               <details class="case">
-                <summary><strong><%= escape(kase.id) %></strong><span><%= escape(kase.variant) %> · difficulty <%= kase.difficulty %></span></summary>
+                <summary><strong><%= escape(kase.id) %></strong><span><%= escape(kase.variant) %> · difficulty <%= escape(kase.difficulty) %></span></summary>
                 <div class="case-content">
                   <details>
                     <summary>Input and expected answer</summary>
