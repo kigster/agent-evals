@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # A tracker that remembers every callback, for specs that watch the run.
-class RecordingTracker < Agent::Evals::Tracker
+class RecordingTracker < LLM::Evals::Tracker
   def self.env_key = "RECORDING_TRACKER_KEY"
 
   attr_reader :events

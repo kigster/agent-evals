@@ -5,18 +5,18 @@
 module TmpSuite
   # @return [String] the copy's evals/ directory
   def copy_toy_suite
-    dir = Dir.mktmpdir("agent-evals")
+    dir = Dir.mktmpdir("llm-evals")
     FileUtils.cp_r(File.join(TOY_SUITE, "evals"), dir)
     File.join(dir, "evals")
   end
 
-  # @return [Agent::Evals::Configuration] the toy suite's pieces over another root
-  def configuration_for(root, cases: Agent::Evals::Configuration::DEFAULT_GLOB)
-    Agent::Evals::Configuration.new.tap do |c|
+  # @return [LLM::Evals::Configuration] the toy suite's pieces over another root
+  def configuration_for(root, cases: LLM::Evals::Configuration::DEFAULT_GLOB)
+    LLM::Evals::Configuration.new.tap do |c|
       c.suite "copy", root: root
       c.cases cases
-      c.adapter Agent::Evals.configuration.adapter
-      c.scorer Agent::Evals.configuration.scorer
+      c.adapter LLM::Evals.configuration.adapter
+      c.scorer LLM::Evals.configuration.scorer
     end
   end
 end

@@ -1,13 +1,13 @@
-# Agent Evals (`agent-evals` or `aeva`)
+# LLM Evals (`llm-evals` or `evals`)
 
-[![Gem Version](https://badge.fury.io/rb/agent-evals.svg)](https://rubygems.org/gems/agent-evals) [![CircleCI](https://dl.circleci.com/status-badge/img/gh/kigster/agent-evals/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/kigster/agent-evals/tree/main) ![coverage](docs/badges/coverage-badge.svg)
+[![Gem Version](https://badge.fury.io/rb/llm-evals.svg)](https://rubygems.org/gems/llm-evals) [![CircleCI](https://dl.circleci.com/status-badge/img/gh/kigster/llm-evals/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/kigster/llm-evals/tree/main) ![coverage](docs/badges/coverage-badge.svg)
 
 ______________________________________________________________________
 
 > [!IMPORTANT]
 > **Which model answers your cases best, and what does it cost?**
 >
-> `agent-evals` runs every model in your lineup over every case in your folder, in parallel, and prints a leaderboard with scores, tokens and dollars.
+> `llm-evals` runs every model in your lineup over every case in your folder, in parallel, and prints a leaderboard with scores, tokens and dollars.
 >
 > You write two small classes: an **adapter** that asks the model, and a **scorer** that grades the answer.
 >
@@ -36,7 +36,7 @@ Every LLM project grows its own eval script, and every one of them rebuilds the 
 The bundled toy suite, run against two fake models (no network):
 
 ```text
-$ aeva compare --local
+$ evals compare --local
 ┌─────────┬─────────────┬─────────┬────────────────┬─────────────┬───────────┬────────┬─────────┐
 │ dataset │ model       │ effort  │ field_accuracy │ exact_match │ restraint │ errors │    cost │
 ├─────────┼─────────────┼─────────┼────────────────┼─────────────┼───────────┼────────┼─────────┤
@@ -56,8 +56,8 @@ Abridged: the real table also has `temp`, `time`, `tok_in` and `tok_out` columns
 The repository ships two example suites. Both use fake models, so they need no API keys and no network. They live under `spec/fixtures/` and are **not** part of the installed gem, so start from a clone:
 
 ```bash
-git clone https://github.com/kigster/agent-evals.git
-cd agent-evals
+git clone https://github.com/kigster/llm-evals.git
+cd llm-evals
 bundle install
 ```
 
@@ -85,10 +85,10 @@ The recipes `cd` into the suite's folder for you and, for the config-only suite,
 
 ### Where to run from
 
-`agent-evals` finds its suite by searching **upward from the current directory** for `evals/eval_helper.rb` or `evals/.agent-eval.config.yml`. The repository root has neither, so running there fails:
+`llm-evals` finds its suite by searching **upward from the current directory** for `evals/eval_helper.rb` or `evals/.llm-evals.config.yml`. The repository root has neither, so running there fails:
 
 ```text
-$ bundle exec exe/aeva cases
+$ bundle exec exe/evals cases
 error: no suite is configured: register an adapter and a scorer in evals/eval_helper.rb, ...
 ```
 
@@ -120,46 +120,46 @@ But it helps to understand what's happening under the hood.
 cd spec/fixtures/toy_suite
 
 # List the 8 cases (2 datasets × 2 variants × 2 cases); calls nothing.
-bundle exec aeva cases
+bundle exec evals cases
 
 # Offline checks of inputs, expected.json, the adapter and the scorer.
-bundle exec aeva verify
+bundle exec evals verify
 
 # Show the experiment matrix the lineup expands into; calls nothing.
-bundle exec aeva compare -n
+bundle exec evals compare -n
 
 # One model, one dataset, with the per-case breakdown.
-bundle exec aeva run -m fake/echo -d animals --local
+bundle exec evals run -m fake/echo -d animals --local
 
 # Every model in the lineup, leaderboard only.
-bundle exec aeva compare --local
+bundle exec evals compare --local
 ```
 
 The same commands work from the repository root with `--helper`:
 
 ```bash
-bundle exec exe/agent-evals compare --local --helper spec/fixtures/toy_suite/evals/eval_helper.rb
+bundle exec exe/llm-evals compare --local --helper spec/fixtures/toy_suite/evals/eval_helper.rb
 ```
 
 What to read in it:
 
-| File (under `spec/fixtures/toy_suite/`) | What it shows                                                |
-| --------------------------------------- | ------------------------------------------------------------ |
-| `evals/eval_helper.rb`                  | `Agent::Evals.configure`: suite, cases glob, adapter, scorer |
-| `lib/toy_suite/evals.rb`                | the adapter and scorer classes                               |
-| `evals/.agent-eval.config.yml`          | the lineup, including a `direct:` entry the suite refuses    |
-| `evals/datasets/`                       | the case layout on disk                                      |
+| File (under `spec/fixtures/toy_suite/`) | What it shows                                              |
+| --------------------------------------- | ---------------------------------------------------------- |
+| `evals/eval_helper.rb`                  | `LLM::Evals.configure`: suite, cases glob, adapter, scorer |
+| `lib/toy_suite/evals.rb`                | the adapter and scorer classes                             |
+| `evals/.llm-evals.config.yml`           | the lineup, including a `direct:` entry the suite refuses  |
+| `evals/datasets/`                       | the case layout on disk                                    |
 
 The warning `typesafe/jev-latest refused: needs typesafe; this suite produces prompt` is intentional: it shows a contender being left out rather than scored 0.
 
 ### 2. The config-only suite (no `eval_helper.rb`)
 
-The same suite, with the adapter and scorer named in `.agent-eval.config.yml` instead of Ruby. Its `require: toy_suite/evals` must be loadable, which in a real project means a gem in your bundle. Here the code lives in the toy suite's `lib/`, so add it to the load path with `RUBYLIB`:
+The same suite, with the adapter and scorer named in `.llm-evals.config.yml` instead of Ruby. Its `require: toy_suite/evals` must be loadable, which in a real project means a gem in your bundle. Here the code lives in the toy suite's `lib/`, so add it to the load path with `RUBYLIB`:
 
 ```bash
 cd spec/fixtures/config_only_suite
-RUBYLIB=../toy_suite/lib bundle exec aeva cases
-RUBYLIB=../toy_suite/lib bundle exec aeva compare --local
+RUBYLIB=../toy_suite/lib bundle exec evals cases
+RUBYLIB=../toy_suite/lib bundle exec evals compare --local
 ```
 
 Without `RUBYLIB` the run stops with `require: toy_suite/evals could not be loaded ... is its gem in the bundle?`.
@@ -170,14 +170,14 @@ Use the toy suite as a template:
 
 1. Copy its `evals/` folder into your project.
 1. Replace the adapter and scorer with your own (see [Writing a suite](#writing-a-suite)).
-1. List real models under `vendors:` in `.agent-eval.config.yml` and drop the `fake:` entries.
+1. List real models under `vendors:` in `.llm-evals.config.yml` and drop the `fake:` entries.
 1. Add `gem "ruby_llm"` to your Gemfile and set `OPENROUTER_API_KEY`, in your shell or the suite's `.env` (see [Environment](#environment)).
 
 ## Install
 
 ```ruby
 # Gemfile
-gem "agent-evals"
+gem "llm-evals"
 
 # for OpenRouter, the default provider
 gem "ruby_llm"
@@ -201,15 +201,15 @@ The boundary runs one way:
 
 Nothing in `lib/` knows what is being evaluated.
 
-The executable looks for `evals/eval_helper.rb` upward from the current directory (or `--helper PATH`, or `AGENT_EVALS_HELPER`), loads it, and dispatches. The helper calls `Agent::Evals.configure`:
+The executable looks for `evals/eval_helper.rb` upward from the current directory (or `--helper PATH`, or `LLM_EVALS_HELPER`), loads it, and dispatches. The helper calls `LLM::Evals.configure`:
 
 ```ruby
 # evals/eval_helper.rb
 require "bundler/setup"
-require "agent/evals"
+require "llm/evals"
 require "my_gem"
 
-class MyAdapter < Agent::Evals::Adapter
+class MyAdapter < LLM::Evals::Adapter
   # Once per dataset, outside the threads.
   def prepare(dataset) = @schema = MyGem.schema_for(dataset)
 
@@ -217,32 +217,32 @@ class MyAdapter < Agent::Evals::Adapter
     completion = model.complete(system: MyGem.system_prompt(@schema), user: kase.input, json: true)
     # The production parser, so scores reflect production.
     output = MyGem.parse(completion.text)
-    Agent::Evals::Reply.new(output: output, raw: completion.text, usage: completion.usage)
+    LLM::Evals::Reply.new(output: output, raw: completion.text, usage: completion.usage)
   rescue MyGem::NotJSON => e
     # The model's failure: scored 0.
-    Agent::Evals::Reply.new(error: e.message, raw: completion&.text)
+    LLM::Evals::Reply.new(error: e.message, raw: completion&.text)
   end
 
   # What the scorer needs beyond the case.
   def context(kase) = { schema: @schema }
 
-  # Offline, for `agent-evals verify`.
+  # Offline, for `llm-evals verify`.
   def verify(dataset) = MyGem.schema_problems(dataset)
 end
 
-class MyScorer < Agent::Evals::Scorer
+class MyScorer < LLM::Evals::Scorer
   def metrics
     [
-      Agent::Evals::Metric.new(
+      LLM::Evals::Metric.new(
         name: "field_accuracy",
         description: "Mean per-field score.",
         primary: true
       ),
-      Agent::Evals::Metric.new(
+      LLM::Evals::Metric.new(
         name: "exact_match",
         description: "1 when every field is right."
       ),
-      Agent::Evals::Metric.new(
+      LLM::Evals::Metric.new(
         name: "restraint",
         description: "Of the fields the text never answers, the share left null."
       )
@@ -254,7 +254,7 @@ class MyScorer < Agent::Evals::Scorer
     mean = scores.values.sum / scores.size
     misses = scores.reject { |_, v| v == 1.0 }.keys
 
-    Agent::Evals::Score.new(
+    LLM::Evals::Score.new(
       value: mean,
       metrics: {
         "field_accuracy" => mean,
@@ -267,13 +267,13 @@ class MyScorer < Agent::Evals::Scorer
   end
 
   def verify(kase, context:)
-    Agent::Evals::SchemaValidator.new(context[:schema]).problems(kase.expected)
+    LLM::Evals::SchemaValidator.new(context[:schema]).problems(kase.expected)
   end
 
   def summary(kase) = "#{kase.expected.count { |_, v| !v.nil? }}/#{kase.expected.size} answered"
 end
 
-Agent::Evals.configure do |c|
+LLM::Evals.configure do |c|
   c.suite "extract", root: __dir__, env_files: ["../.env"]
   c.cases "datasets/*/cases/**/input.txt"
   c.adapter MyAdapter.new
@@ -287,25 +287,25 @@ A complete, runnable suite lives in [`spec/fixtures/toy_suite/evals/`](spec/fixt
 
 ### A config-only suite
 
-When the adapter and scorer live in your own gem, you need no `eval_helper.rb`. Three optional keys in `.agent-eval.config.yml` name them:
+When the adapter and scorer live in your own gem, you need no `eval_helper.rb`. Three optional keys in `.llm-evals.config.yml` name them:
 
 ```yaml
-# evals/.agent-eval.config.yml
+# evals/.llm-evals.config.yml
 require: my_gem/evals              # a require path, or a list; loaded through the bundle's load path
 adapter: MyGem::Evals::Adapter     # constant names, instantiated with no arguments
 scorer: MyGem::Evals::Scorer
 ```
 
-The executable finds `evals/.agent-eval.config.yml` upward from the working directory, roots the suite at `evals/`, requires what `require:` names and instantiates the two constants. `evals/` holds only the config file and `datasets/`:
+The executable finds `evals/.llm-evals.config.yml` upward from the working directory, roots the suite at `evals/`, requires what `require:` names and instantiates the two constants. `evals/` holds only the config file and `datasets/`:
 
 ```text
 lib/my_gem/evals/adapter.rb         # the Ruby, in the gem
 lib/my_gem/evals/scorer.rb
-evals/.agent-eval.config.yml        # the lineup, plus require/adapter/scorer
+evals/.llm-evals.config.yml        # the lineup, plus require/adapter/scorer
 evals/datasets/...
 ```
 
-If `evals/eval_helper.rb` also exists, it loads first and may register either object in code; the config keys fill whatever it left unset. The required file may itself call `Agent::Evals.configure`, for instance to register a provider.
+If `evals/eval_helper.rb` also exists, it loads first and may register either object in code; the config keys fill whatever it left unset. The required file may itself call `LLM::Evals.configure`, for instance to register a provider.
 
 Errors name what is wrong: no adapter or scorer from either source names the file and the keys; a failing `require:` or an unknown constant names the key and its value instead of a bare `LoadError` or `NameError`. [`spec/fixtures/config_only_suite/`](spec/fixtures/config_only_suite/) is the toy suite in this form.
 
@@ -314,7 +314,7 @@ Errors name what is wrong: no adapter or scorer from either source names the fil
 ```text
 evals/
   eval_helper.rb
-  .agent-eval.config.yml           # the lineup and the request types
+  .llm-evals.config.yml           # the lineup and the request types
   datasets/<dataset>/cases/<variant>/[NNN/]input.txt
   datasets/<dataset>/cases/<variant>/[NNN/]expected.json
   datasets/<dataset>/cases/<variant>/[NNN/]metadata.json   # optional; merged into Case#metadata
@@ -326,12 +326,12 @@ evals/
 
 Need another layout? Change the glob passed to `c.cases`.
 
-### The lineup: `.agent-eval.config.yml`
+### The lineup: `.llm-evals.config.yml`
 
 The file at the suite root names the models to compare, their settings, and the kinds of request the suite sends:
 
 ```yaml
-# evals/.agent-eval.config.yml
+# evals/.llm-evals.config.yml
 project: my-evals            # Braintrust project name (BRAINTRUST_PROJECT_ID wins when set)
 request_types: [prompt]      # required: what the suite's adapter sends
 
@@ -397,7 +397,7 @@ You can weight `score`, `errors`, `time`, `cost` and your scorer's metrics. Anyt
 
 #### Request types
 
-`request_types` is required. It says what the suite's adapter sends. The types belong to the providers and show in `agent-evals --help`; a suite only names them:
+`request_types` is required. It says what the suite's adapter sends. The types belong to the providers and show in `llm-evals --help`; a suite only names them:
 
 | Type       | Provider                                 | Meaning                                              |
 | ---------- | ---------------------------------------- | ---------------------------------------------------- |
@@ -415,18 +415,18 @@ A contender runs only when its provider's type is in the suite's list. Otherwise
 ## The command line
 
 ```bash
-aeva cases                              # list the cases, no calls
-aeva verify                             # offline checks: inputs, expected.json, adapter, scorer
-aeva run -m openai/gpt-4.1-mini         # one model, every dataset, per-case breakdown
-aeva run -m anthropic/claude-haiku-5.5 -e low -d vague -c vague/00
-aeva run --local -o                     # no remote tracker; the breakdowns go to log/
-aeva compare                            # everything the lineup lists, leaderboard only
-aeva compare                         # uses results.display
-aeva compare --format html -o report.html
-aeva compare --format json -o results.json # save every result for later rendering
-aeva render results.json -o report.html # render saved results; no model calls
-aeva compare -n                         # show that matrix, call nothing
-aeva completion zsh                     # shell completion (bash too)
+evals cases                             # list the cases, no calls
+evals verify                            # offline checks: inputs, expected.json, adapter, scorer
+evals run -m openai/gpt-4.1-mini        # one model, every dataset, per-case breakdown
+evals run -m anthropic/claude-haiku-5.5 -e low -d vague -c vague/00
+evals run --local -o                    # no remote tracker; the breakdowns go to log/
+evals compare                           # everything the lineup lists, leaderboard only
+evals compare                           # uses results.display
+evals compare --format html -o report.html
+evals compare --format json -o results.json # save every result for later rendering
+evals render results.json -o report.html # render saved results; no model calls
+evals compare -n                        # show that matrix, call nothing
+evals completion zsh                    # shell completion (bash too)
 ```
 
 | Command      | Does                                                 | Calls models |
@@ -443,7 +443,7 @@ aeva completion zsh                     # shell completion (bash too)
 - `verify` reports empty inputs and missing or unparsable `expected.json`, then runs `adapter.verify(dataset)` and `scorer.verify`.
 - `run` and `compare` run one experiment per model and dataset, as many at once as the machine has CPUs. `-j N` / `--concurrency N` sets another limit, and `-j 0` starts them all together. `-p` is separate: the cases in flight inside each experiment.
 
-Flags shared by `run` and `compare`: `-m/--models`, `-d/--dataset` (every dataset when omitted), `-c/--case`, `-e/--effort`, `-t/--temperature`, `--max-tokens`, `-p/--parallelism`, `-j/--concurrency`, `-C/--config FILE`, `--project NAME`, `--tracker NAME`, `--local`, `--no-open`, `-n/--dry-run`, `-o/--output [FILE]`, `--format tui|html|json`, `--totals overall|variant|both`, `--display none|tui|browser`, `--autosave/--no-autosave`, `--destination DIR` and `--temp-dir DIR`. `--totals` controls the TUI totals tables: the default `overall` compares contenders across all cases, `variant` compares each case folder (such as `complete` or `vague`) across datasets, and `both` prints both views. Completed runs are saved as timestamped JSON by default, independently of the selected display. Browser and TUI reports are rendered from that JSON; `--no-autosave` uses a temporary JSON snapshot under `temp_dir`. Use `agent-evals render results.json` to regenerate HTML from saved results without repeating model calls. `-l` and `-L` are reserved for logging and not yet implemented.
+Flags shared by `run` and `compare`: `-m/--models`, `-d/--dataset` (every dataset when omitted), `-c/--case`, `-e/--effort`, `-t/--temperature`, `--max-tokens`, `-p/--parallelism`, `-j/--concurrency`, `-C/--config FILE`, `--project NAME`, `--tracker NAME`, `--local`, `--no-open`, `-n/--dry-run`, `-o/--output [FILE]`, `--format tui|html|json`, `--totals overall|variant|both`, `--display none|tui|browser`, `--autosave/--no-autosave`, `--destination DIR` and `--temp-dir DIR`. `--totals` controls the TUI totals tables: the default `overall` compares contenders across all cases, `variant` compares each case folder (such as `complete` or `vague`) across datasets, and `both` prints both views. Completed runs are saved as timestamped JSON by default, independently of the selected display. Browser and TUI reports are rendered from that JSON; `--no-autosave` uses a temporary JSON snapshot under `temp_dir`. Use `llm-evals render results.json` to regenerate HTML from saved results without repeating model calls. `-l` and `-L` are reserved for logging and not yet implemented.
 
 **Reading the output.** `results.display` selects no report, a terminal leaderboard, or a browser report. The TUI has one column per metric the scorer declares, ranked by the `primary` one, with a glossary built from each metric's `description`. Browser reports show global and dataset standings, sortable tables, case inputs, expected answers, scores and diagnostics. Provider names and model IDs use separate colors; the hero standings show effort and temperature next to the model. Every JSON snapshot records both parsed CLI options and effective run settings, including expanded model settings and selected cases. `render` turns a saved snapshot into HTML later. Progress bars and warnings go to STDERR, and anything a library prints while the bars redraw is saved to `log/<command>.warnings.<stamp>.log` instead of garbling the screen.
 
@@ -461,11 +461,11 @@ Choose one with `--tracker NAME`, or let its key select it (see selection order 
 
 What each one sends:
 
-- **local** writes `log/agent-evals/<experiment>.<stamp>.json`: settings, means, errors, usage, and one row per case (score, metrics, outcomes, diagnostics, error, usage).
+- **local** writes `log/llm-evals/<experiment>.<stamp>.json`: settings, means, errors, usage, and one row per case (score, metrics, outcomes, diagnostics, error, usage).
 - **braintrust** creates one experiment per run in the project, with one eval row per case: input, expected, output (or `_error`), the scorer's metrics as scores, and diagnostics, outcomes and usage as metadata. The experiment page opens when the run finishes, unless `--no-open`.
 - **logfire** sends OTLP traces to `https://logfire-us.pydantic.dev/v1/traces` (`LOGFIRE_BASE_URL` for another region): one span per experiment (suite, project, model, provider, settings, case count, means) with one child span per case (id, dataset, variant, score, each metric, outcome counts, duration, tokens and cost, diagnostics as JSON cut at 4 KB, exceptions recorded). Raw replies are not sent unless the config has `logfire: { include_replies: true }`. There is no page to open.
 
-**Selection order:** `--tracker NAME`, then `tracker:` in `.agent-eval.config.yml`, then the environment, where exactly one tracker's key being set selects it.
+**Selection order:** `--tracker NAME`, then `tracker:` in `.llm-evals.config.yml`, then the environment, where exactly one tracker's key being set selects it.
 
 - Two keys set and nothing chosen is an error asking for `--tracker` or `tracker:`.
 - `--local` (or `--tracker none`) means no remote tracker.
@@ -479,7 +479,7 @@ Logfire has no Ruby gem of its own. It is an OTLP backend for the standard OpenT
 A tracker is a class with three callbacks. Register it with `c.tracker` in the helper (or in a plugin gem loaded through `require:`), then choose it by name:
 
 ```ruby
-class Weave < Agent::Evals::Tracker
+class Weave < LLM::Evals::Tracker
   # Selects it when set and nothing else is chosen.
   def self.env_key = "WANDB_API_KEY"
 
@@ -515,7 +515,7 @@ class Weave < Agent::Evals::Tracker
   end
 end
 
-Agent::Evals.configure { |c| c.tracker Weave }
+LLM::Evals.configure { |c| c.tracker Weave }
 ```
 
 `context` holds `suite:`, `project:`, `project_id:` and `options:` (the tracker's own section of the config file, e.g. `weave: { entity: "team" }`). Return `false` from `enabled?` to turn every callback into a no-op. To target another OTLP backend, subclass `Trackers::Logfire` with different credentials.
@@ -532,7 +532,7 @@ Agent::Evals.configure { |c| c.tracker Weave }
 | `LOGFIRE_BASE_URL`            | Logfire region; default `https://logfire-us.pydantic.dev` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | when set, logfire uses it instead of `LOGFIRE_TOKEN`      |
 | `OTEL_EXPORTER_OTLP_HEADERS`  | likewise                                                  |
-| `AGENT_EVALS_HELPER`          | a helper to load instead of searching upward              |
+| `LLM_EVALS_HELPER`            | a helper to load instead of searching upward              |
 
 The suite's `env_files` load first, without overriding what is already exported. A missing key fails the run before any model is called, naming the variable.
 
@@ -545,7 +545,7 @@ A provider wraps one API: the request type it answers, the keys it needs, the mo
 - Register it with `c.provider`. The last registered is asked first for a `vendors:` id; OpenRouter, which claims every id, is always asked last.
 
 ```ruby
-class Ollama < Agent::Evals::Providers::Base
+class Ollama < LLM::Evals::Providers::Base
   HOST = "http://localhost:11434"
 
   def name = "ollama"
@@ -580,7 +580,7 @@ class Ollama < Agent::Evals::Providers::Base
     }.compact
     response = JSON.parse(Net::HTTP.post(URI("#{HOST}/api/generate"), JSON.generate(body)).body)
 
-    Agent::Evals::Completion.new(
+    LLM::Evals::Completion.new(
       text: response.fetch("response"),
       usage: {
         input_tokens: response["prompt_eval_count"],
@@ -592,7 +592,7 @@ class Ollama < Agent::Evals::Providers::Base
   end
 end
 
-Agent::Evals.configure { |c| c.provider Ollama.new }
+LLM::Evals.configure { |c| c.provider Ollama.new }
 ```
 
 `model.effort`, `model.temperature` and `model.max_tokens` carry the contender's settings; nil means "send nothing". A transport failure should raise: the run counts it as an error, not as a wrong answer.
@@ -602,7 +602,7 @@ Agent::Evals.configure { |c| c.provider Ollama.new }
 ## Public API
 
 ```ruby
-module Agent::Evals
+module LLM::Evals
   Case       = Data.define(:id, :dataset, :variant, :input, :expected, :path, :metadata)
   Usage      = Data.define(:input_tokens, :output_tokens, :cost_usd)
   Completion = Data.define(:text, :usage, :raw)

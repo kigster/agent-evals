@@ -43,7 +43,7 @@ require "rspec/its"
 require "stringio"
 require "tmpdir"
 require "open3"
-require "agent/evals"
+require "llm/evals"
 
 # The toy suite is the configured suite for the whole run: one adapter, one
 # scorer, one fake provider. Specs that need another build a Configuration

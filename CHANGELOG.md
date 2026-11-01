@@ -2,6 +2,22 @@
 
 ## 0.4.0 (2026-10-30)
 
+Renamed from `agent-evals`. The version continues from `agent-evals` 0.3.1, and the old gem gets no further releases.
+
+To upgrade a suite:
+
+| Was                      | Now                                          |
+| ------------------------ | -------------------------------------------- |
+| `gem "agent-evals"`      | `gem "llm-evals"`                            |
+| `require "agent/evals"`  | `require "llm/evals"`                        |
+| `Agent::Evals`           | `LLM::Evals`                                 |
+| `agent-evals`, `aeva`    | `llm-evals`, `evals` (identical executables) |
+| `.agent-eval.config.yml` | `.llm-evals.config.yml`                      |
+| `AGENT_EVALS_HELPER`     | `LLM_EVALS_HELPER`                           |
+| `log/agent-evals/`       | `log/llm-evals/`                             |
+
+The old names are not read as fallbacks, with one exception: JSON reports saved as `agent-evals-report` still render.
+
 - Add `--format html` to `run` and `compare` for a standalone report with global and dataset rankings, coverage, sortable tables, case inputs, expected answers, scores and diagnostics. TUI remains the default; HTML writes to `log/` unless `-o` names a path. Provider and model names are color-coded, with effort and temperature in separate columns.
 - Add `--totals overall|variant|both` to choose the TUI totals view; overall results are the default and per-variant tables remain available.
 - Save every run as timestamped JSON by default and render browser and TUI output from the decoded JSON snapshot.

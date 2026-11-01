@@ -5,7 +5,7 @@ executors:
   ruby:
     docker:
       - image: cimg/ruby:4.0.6
-    working_directory: ~/agent-evals
+    working_directory: ~/llm-evals
 
 commands:
   sources:

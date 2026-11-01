@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    agent-evals (0.4.0)
+    llm-evals (0.4.0)
       dotenv (~> 3.2)
       dry-cli (~> 1.4)
       dry-cli-autocomplete (~> 0.6)
@@ -287,12 +287,12 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
-  agent-evals!
   aruba (~> 2.4)
   braintrust (~> 0.6)
   bundler-audit (~> 0.9)
   coverage-badge
   erb (~> 6.0.4)
+  llm-evals!
   opentelemetry-exporter-otlp (~> 0.30)
   opentelemetry-sdk (~> 1.8)
   rake (~> 13.0)
@@ -306,7 +306,6 @@ DEPENDENCIES
   yard (~> 0.9)
 
 CHECKSUMS
-  agent-evals (0.4.0)
   aruba (2.4.1) sha256=c6821949136bd9c953b3cf553971c4780faa26bb40082ac5ce631c541e0caf0d
   ast (2.4.3) sha256=954615157c1d6a382bc27d690d973195e79db7f55e9765ac7c481c60bdb4d383
   base64 (0.3.0) sha256=27337aeabad6ffae05c265c450490628ef3ebd4b67be58257393227588f5a97b
@@ -350,6 +349,7 @@ CHECKSUMS
   json (3.1.0) sha256=3ce7ccf8fde58960177a3a756c31f292a4c1e1dedee884547096a5b0604e3bd8
   language_server-protocol (3.17.0.6) sha256=5ef2c0c138f8267e1bc631d3328347d354f96724b0af22f2c79516120443b7f0
   lint_roller (1.1.0) sha256=2c0c845b632a7d172cb849cc90c1bce937a28c5c8ccccb50dfd46a485003cc87
+  llm-evals (0.4.0)
   logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
   marcel (2.1.0) sha256=f8b0327111dc7e516331eeefe052e981ce50e2bd826c1042a53cdf047fcc3512
   memoist3 (1.0.0) sha256=686e42402cf150a362050c23143dc57b0ef88f8c344943ff8b7845792b50d56f

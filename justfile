@@ -1,12 +1,12 @@
 set shell := ["bash", "-c"]
 
-version := `grep VERSION lib/agent/evals/version.rb | awk '{print $3}' | tr -d '"' | tr -d '\n'`
+version := `grep VERSION lib/llm/evals/version.rb | awk '{print $3}' | tr -d '"' | tr -d '\n'`
 # The `-` matters: `rbenv init bash` prints human instructions ("skipping
 # ~/.bash_login: already configured"), which eval then tries to run, and the
 # recipe dies with "skipping: command not found". `rbenv init - bash` prints
 # the shell code that is meant to be eval'd.
 rbenv   := 'eval "$(rbenv init - bash 2>/dev/null || true)"; bundle exec '
-repo    := 'git@github.com:kigster/agent-evals.git'
+repo    := 'git@github.com:kigster/llm-evals.git'
 
 # 1Password secret reference for the RubyGems TOTP, and the full path to `op`
 # because a recipe does not inherit an interactive shell's PATH.
@@ -19,12 +19,12 @@ repo    := 'git@github.com:kigster/agent-evals.git'
 op       := '/opt/homebrew/bin/op'
 otp_ref  := 'op://open-source-repos/ruby-gems/one-time password?attribute=otp'
 
-gem_name := 'agent-evals'
+gem_name := 'llm-evals'
 gem_file := 'pkg/' + gem_name + '-' + version + '.gem'
 gem_url  := 'https://rubygems.org/gems/' + gem_name
 
 # The executable, as seen from inside either example suite's folder.
-exe      := '../../../exe/agent-evals'
+exe      := '../../../exe/llm-evals'
 
 [no-exit-message]
 recipes:

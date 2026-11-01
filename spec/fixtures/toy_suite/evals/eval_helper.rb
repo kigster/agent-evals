@@ -10,11 +10,11 @@
 $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 require "toy_suite/evals"
 
-Agent::Evals.configure do |c|
-  c.suite "toy", root: __dir__, env_files: [".env"], description: "The toy suite that ships with agent-evals."
+LLM::Evals.configure do |c|
+  c.suite "toy", root: __dir__, env_files: [".env"], description: "The toy suite that ships with llm-evals."
   c.cases "datasets/*/cases/**/input.txt"
   c.adapter ToySuite::Evals::Adapter.new
   c.scorer ToySuite::Evals::Scorer.new
-  c.provider Agent::Evals::Testing::FakeProvider.new # also registered by the require above; the later one replaces it
+  c.provider LLM::Evals::Testing::FakeProvider.new # also registered by the require above; the later one replaces it
   c.before_run { ENV["TOY_SUITE_HOOK_RAN"] = "1" }
 end
